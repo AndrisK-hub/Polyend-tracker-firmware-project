@@ -1,0 +1,53 @@
+name: Export Tracker Mini firmware to a branch
+
+# Copies the Tracker Mini .ptf from the latest successful "Build Tracker CE Firmware" run on main
+# into an orphan branch (firmware-builds), so it can be fetched with plain git.
+# Runs when this file changes, or manually from the Actions tab.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/export-ptf.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  export:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download firmware artifact of the latest successful build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --branch main \
+                     --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          echo "Using build run $RUN_ID"
+          echo "$RUN_ID" > run_id.txt
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" -n polyend-tracker-ce-firmware -D out
+          ls -l out
+
+      - name: Publish the Tracker Mini .ptf to the firmware-builds branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir pub
+          cp out/TrackerMini_*.ptf pub/
+          cd pub
+          {
+            echo "Tracker Mini firmware copied from build run $(cat ../run_id.txt) of $GITHUB_REPOSITORY"
+            echo
+            sha256sum TrackerMini_*.ptf
+          } > README.txt
+          cat README.txt
+          git init -q -b firmware-builds
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Tracker Mini firmware from build run $(cat ../run_id.txt)"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" firmware-builds
