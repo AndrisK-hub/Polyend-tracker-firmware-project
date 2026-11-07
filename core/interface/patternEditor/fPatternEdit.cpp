@@ -56,6 +56,10 @@ static void functNextActionButtonPage();
 // pozostale
 static void functUndoRedo(uint8_t state, bool undo);
 static void functUndoRedoOnLeftRight(int8_t dir);
+static void functClearPatternNo();
+static void functClearPatternYes();
+static void functClearPatternToggle();
+static void functClearPatternEnter(uint8_t state);
 
 // step buttons
 static void functNote(uint8_t state);
@@ -4119,6 +4123,11 @@ static void functRedo(uint8_t state)
     return functUndoRedo(state, false);
 }
 
+// Holding Undo for this long asks whether to clear the whole pattern
+static const uint16_t kClearPatternHoldMs = 1000;
+static elapsedMillis undoHoldTimer;
+static bool undoHoldHandled = false;
+
 static void functUndoRedo(uint8_t state, bool undo)
 {
     if (state == buttonPress)
@@ -4129,6 +4138,19 @@ static void functUndoRedo(uint8_t state, bool undo)
         display.synchronizeRefresh();
 
         PTE->undoRedoButtonReleaseBlocker = 0;
+
+        undoHoldTimer = 0;
+        undoHoldHandled = false;
+    }
+    else if (state == buttonHold)
+    {
+        // the hold event repeats while the button is down; ask once per press
+        if (undo && !undoHoldHandled && undoHoldTimer >= kClearPatternHoldMs)
+        {
+            undoHoldHandled = true;
+            PTE->undoRedoButtonReleaseBlocker = 1; // letting go of Undo must not undo anything
+            PTE->openClearPatternDialog();
+        }
     }
     else if (state == buttonRelease)
     {
@@ -4179,6 +4201,96 @@ static void functUndoRedoOnLeftRight(int8_t dir)
     PTE->refreshPattern();
     PTE->showPattern();
     PTE->showLength();
+}
+
+// ##############################################################################################
+// ###############################   CLEAR PATTERN (HOLD UNDO)   ################################
+// ##############################################################################################
+// The question has the two answers on the last two buttons under the screen; Yes is selected from
+// the start. Left/Right/Up/Down move the selection, Enter (Insert, or the middle key of the
+// Mini) answers the selected one. Everything else is blocked until the question is answered.
+void cPatternEditor::openClearPatternDialog()
+{
+    clearPatternAnswerYes = true;
+    clearPatternEnterPressed = false;
+
+    ip->clearButtonsRange(interfaceButton0, interfaceButton7);
+    ip->setButtonObj(interfaceButton6, buttonPress, functClearPatternNo);
+    ip->setButtonObj(interfaceButton7, buttonPress, functClearPatternYes);
+
+    ip->setButtonObj(interfaceButtonLeft, buttonPress, functClearPatternToggle);
+    ip->setButtonObj(interfaceButtonRight, buttonPress, functClearPatternToggle);
+    ip->setButtonObj(interfaceButtonUp, buttonPress, functClearPatternToggle);
+    ip->setButtonObj(interfaceButtonDown, buttonPress, functClearPatternToggle);
+    ip->setButtonObj(interfaceButtonInsert, functClearPatternEnter);
+    ip->setButtonObj(interfaceButtonMiniMiddle, functClearPatternEnter);
+
+    ip->blockAllInputsExcept(interfaceButton6, interfaceButton7);
+    ip->unblockButton(interfaceButtonLeft);
+    ip->unblockButton(interfaceButtonRight);
+    ip->unblockButton(interfaceButtonUp);
+    ip->unblockButton(interfaceButtonDown);
+    ip->unblockButton(interfaceButtonInsert);
+    ip->unblockButton(interfaceButtonMiniMiddle);
+
+    showClearPatternDialog();
+}
+
+void cPatternEditor::closeClearPatternDialog(bool clear)
+{
+    ip->unblockAllInputs();
+    setDefaultScreenFunct();
+    setSwitchModuleFunct();
+
+    selectedPlace = -1; // no frame on the buttons
+    mtPopups.hideInfoPopup();
+    showDefaultScreen();
+
+    if (clear)
+    {
+        newFileManager.storePatternUndoRevision(); // so Undo brings the pattern back
+
+        sequencer.clearAllStepsOfPattern();
+
+        newFileManager.setActualPatternStructChanged();
+    }
+
+    refreshEditState(); // puts the action buttons back
+    refreshPattern();
+    showPattern();
+    showLength();
+}
+
+static void functClearPatternNo()
+{
+    PTE->undoRedoButtonReleaseBlocker = 1; // the button is Redo again when it is let go
+    PTE->closeClearPatternDialog(false);
+}
+
+static void functClearPatternYes()
+{
+    PTE->undoRedoButtonReleaseBlocker = 1;
+    PTE->closeClearPatternDialog(true);
+}
+
+static void functClearPatternToggle()
+{
+    PTE->selectClearPatternAnswer(!PTE->clearPatternAnswerYes);
+}
+
+// The answer is given when the key is let go, so the release does not reach the editor's own
+// handler of the same key (the middle key of the Mini would end a note there).
+static void functClearPatternEnter(uint8_t state)
+{
+    if (state == buttonPress || state == buttonHold)
+    {
+        PTE->clearPatternEnterPressed = true;
+    }
+    else if (state == buttonRelease && PTE->clearPatternEnterPressed)
+    {
+        PTE->clearPatternEnterPressed = false;
+        PTE->closeClearPatternDialog(PTE->clearPatternAnswerYes);
+    }
 }
 
 // ##############################################################################################

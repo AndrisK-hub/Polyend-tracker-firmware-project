@@ -1937,6 +1937,48 @@ void cPatternEditor::hideActualParamOnBar()
     titleBar->showRightLabel(false);
 }
 
+// Hold Undo: the whole screen asks one question. The two answers are the last two buttons under
+// the screen; the frame marks the selected one.
+void cPatternEditor::showClearPatternDialog()
+{
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        display.setControlText(label[i], "");
+        display.setControlText2(label[i], "");
+
+        display.refreshControl(label[i]);
+        display.setControlShow(label[i]);
+    }
+
+    display.setControlValue(label[6], 0);
+    display.setControlValue(label[7], 0);
+    display.setControlText(label[6], "No");
+    display.setControlText(label[7], "Yes");
+    display.setControlColors(label[6], display.getTheme().activeLabelsColors);
+    display.setControlColors(label[7], display.getTheme().activeLabelsColors);
+
+    display.refreshControl(label[6]);
+    display.refreshControl(label[7]);
+
+    mtPopups.showInfoPopup("Clear the whole pattern?", "Undo can bring it back.");
+
+    display.setControlValue(bgLabel, 255);
+    display.setControlShow(bgLabel);
+    display.refreshControl(bgLabel);
+
+    selectClearPatternAnswer(clearPatternAnswerYes);
+
+    display.synchronizeRefresh();
+}
+
+void cPatternEditor::selectClearPatternAnswer(bool yes)
+{
+    clearPatternAnswerYes = yes;
+    selectedPlace = yes ? 7 : 6;
+    activateLabelsBorder();
+    display.synchronizeRefresh();
+}
+
 void cPatternEditor::showClockWarning()
 {
     for (uint8_t i = 0; i < 8; i++)

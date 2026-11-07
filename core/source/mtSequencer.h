@@ -869,6 +869,9 @@ class Sequencer
     int8_t getSelectionFirstNote();
 
     void clearSingleTrack(strPattern::strTrack* track);
+    // empties every step of every track of the current pattern; the length, the track lengths
+    // and the swing stay as they are (Pattern Editor: hold Undo)
+    void clearAllStepsOfPattern();
     void clearPattern(strPattern* patt);
     void setPatternHeader(strPattern* patt);
     void clearStep(strPattern::strTrack::strStep*);

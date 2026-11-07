@@ -62,6 +62,13 @@ All notable changes to the **Polyend Tracker Community Edition (CE)** firmware a
    * The steps of the voice tracks inside the selection are **rewritten**: the notes that do not belong to the part are removed, volumes are set from the generated velocities, and the instruments follow the Drums rule (the instrument you used last, the next ones for the next lanes on sample tracks, one PERC synth for all lanes). Fx and micro-moves of the steps are kept. The bass is cut and the pads fade out with note-offs where the break starts.
    * Original Tracker and Tracker+ do not get these entries. No file format change.
 
+7. **Clear the whole pattern: hold `Undo` (All 3 Devices)**
+   * In the Pattern Editor, in edit mode, **hold the `Undo` button for a second** and a question appears: *Clear the whole pattern?* A short press still undoes the last change as before.
+   * **Yes is selected from the start** (it has the frame). `Yes` / `No` are the last two buttons under the screen; the arrow keys move the frame between them and `Insert` (the middle key on the Mini) answers the selected one. Everything else is blocked until you answer.
+   * Yes empties **every step of every track**: notes, instruments, volumes, fx and micro-moves. The length of the pattern and of the tracks, the swing and the name stay as they are.
+   * The pattern is saved to the undo history first, so **`Undo` brings it back**.
+   * No file format change.
+
 ### Fixed
 
 1. **`Gate length` FX is no longer ignored on steps that also have `Micro-move`.** The gate length is now carried along with the step until the delayed note actually starts. Patterns that combine both on one step will now play their gate; before, the note kept ringing.

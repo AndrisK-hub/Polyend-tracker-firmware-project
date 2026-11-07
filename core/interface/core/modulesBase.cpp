@@ -127,6 +127,14 @@ void InputProcessor::blockAllInputsExceptScreenButtons()
     memset((uint8_t*)blockButtons, 0, 8); // block first 8 (under screen)
 }
 
+void InputProcessor::unblockButton(uint8_t btn)
+{
+    if (btn < buttonsCount)
+    {
+        blockButtons[btn] = 0;
+    }
+}
+
 void InputProcessor::unblockAllInputs()
 {
     memset((uint8_t*)blockButtons, 0, buttonsCount);

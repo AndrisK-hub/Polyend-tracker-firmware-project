@@ -175,6 +175,14 @@ class cPatternEditor : public ModuleBase
     void exportSelection();
     void setClockWarningScreenFunct();
     void showClockWarning();
+
+    // Hold Undo: "Clear the whole pattern?" with Yes selected at first
+    void openClearPatternDialog();
+    void closeClearPatternDialog(bool clear);
+    void showClearPatternDialog();
+    void selectClearPatternAnswer(bool yes);
+    bool clearPatternAnswerYes = true;
+    bool clearPatternEnterPressed = false;
     void setPreviousUsedFx(uint8_t newValue);
     uint8_t getPreviousUsedFx();
     void setPreviousUsedFxValue(uint8_t newValue);

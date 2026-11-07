@@ -113,6 +113,7 @@ class InputProcessor
     void blockAllInputsExcept(uint8_t btn);
     void blockAllInputsExcept(uint8_t btn1, uint8_t btn2);
     void blockAllInputsExceptScreenButtons();
+    void unblockButton(uint8_t btn); // lets one more button through after blockAllInputs()
     void unblockAllInputs();
     uint8_t isPowerButtonBlocked() { return blockPowerButton; }
 

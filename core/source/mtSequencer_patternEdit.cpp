@@ -1923,6 +1923,14 @@ void Sequencer::clearSingleTrack(strPattern::strTrack* track)
     }
 }
 
+void Sequencer::clearAllStepsOfPattern()
+{
+    for (strPattern::strTrack& track : currentPattern->track)
+    {
+        clearSingleTrack(&track);
+    }
+}
+
 void Sequencer::insert(strSelection* selection)
 {
     if (!isSelectionCorrect(selection))
