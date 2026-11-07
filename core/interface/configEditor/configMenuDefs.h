@@ -127,6 +127,11 @@ const char* const recOptionsTexts[4] = {
     "Microtiming + Velocity",
 };
 
+const char* const recNoteLengthTexts[2] = {
+    "On",
+    "Off",
+};
+
 const char* const recThresholdTexts[16] = {
     "0",
     "-4",
@@ -262,6 +267,13 @@ const char recNotesDesc[] = {
     "quantized notes with velocity, or notes with microtiming and velocity. You need to record "
     "with an external MIDI device "
     "to record velocity. "
+};
+
+const char recNoteLengthDesc[] = {
+    "On: live recording stores how long you held each note. Notes shorter than a step get a Gate "
+    "length FX, longer notes get an OFF step (with Micro-move) where you let go. Off: original "
+    "behavior, only the note is stored and an OFF is placed in the following step. "
+    "Works for pads and MIDI, and only while the sequencer is playing."
 };
 
 const char recThresholdDesc[] = {

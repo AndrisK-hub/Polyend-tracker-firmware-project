@@ -446,6 +446,12 @@ class Sequencer
 
                 int8_t volume = -1; // jeśli <0 to nie wysyłamy
                 int8_t micromove = -1;
+
+                // NOT part of the pattern step (it sits after the fields that are memcpy'd from
+                // strStep). Gate length in microsteps, evaluated when the step is loaded and
+                // carried along with the step so that it is still known when a micromove delays
+                // the actual note start. -1 = no gate (note rings until the next note / OFF).
+                int16_t gateLength = -1;
             } stepSent, stepToSend, stepContRoll;
 
             bool isActive = 1;
@@ -455,6 +461,10 @@ class Sequencer
             bool noteOpen = 0;
             uint8_t recOpen = 0;
             uint8_t recNoteOnStepIdx = 0;
+
+            // live recording of note length (see Sequencer::writeRecordedNoteLength)
+            uint16_t recNoteTicks = 0;     // microsteps the recorded note has been held so far
+            uint8_t recNoteStartDelay = 0; // playback delay of the recorded note step, microsteps
 
             int16_t noteSource = -1;
 
@@ -1018,6 +1028,11 @@ class Sequencer
 
     uint8_t recMicrotiming();
     uint8_t recVelocity();
+
+    // live recording of note length
+    bool isRecNoteLengthActive();
+    uint8_t getRecStartDelayTicks(uint8_t instrument, int8_t micromove);
+    bool writeRecordedNoteLength(uint8_t track);
     uint8_t getDestRecordingStep(uint8_t track, bool quantize, bool noteOff = false);
 
     uint8_t getNextArpNote(strPlayer::strPlayerTrack* playerRow);

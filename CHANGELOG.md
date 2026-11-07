@@ -4,6 +4,22 @@ All notable changes to the **Polyend Tracker Community Edition (CE)** firmware a
 
 ---
 
+## [Unreleased]
+
+### Added
+
+1. **Live recording of note length (All 3 Devices)**
+   * New `Config > General > Rec. note length` option (`On` / `Off`, default `On`).
+   * `On`: while the sequencer is playing, live recording (pads and MIDI) stores how long each note was held, in any `Recording options` mode. A note held for less than a step gets a `Gate length` FX on its step. A note held for a step or longer gets an `OFF` step where it was released, with `Micro-move` for the position inside that step.
+   * `Off`: the original behavior. Only the note is stored and an `OFF` is placed in the step following it.
+   * With the sequencer stopped, during pre-roll and in Performance mode the original behavior is always used.
+
+### Fixed
+
+1. **`Gate length` FX is no longer ignored on steps that also have `Micro-move`.** The gate length is now carried along with the step until the delayed note actually starts. Patterns that combine both on one step will now play their gate; before, the note kept ringing.
+
+---
+
 ## [1.0.0] - Initial Community Edition Release
 
 > **⚠️ Important :: Project Compatibility Notice:**

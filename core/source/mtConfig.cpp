@@ -400,6 +400,8 @@ void checkConfig()
         mtConfig.general.recOptions = 0;
     if (mtConfig.general.recThreshold > recThreshold_max)
         mtConfig.general.recThreshold = recThreshold_default;
+    if (mtConfig.general.recNoteLength > recNoteLength_max)
+        mtConfig.general.recNoteLength = recNoteLength_on;
     if (mtConfig.general.performanceSource > 1)
         mtConfig.general.performanceSource = 0;
 
@@ -558,6 +560,7 @@ void resetConfig()
     mtConfig.general.lineInOutType = 0;
     mtConfig.general.previewVolume = PREVIEW_VOLUME_DEFAULT;
     mtConfig.general.recThreshold = recThreshold_default;
+    mtConfig.general.recNoteLength = recNoteLength_on;
 
     // interface ----------------------------------------
     mtConfig.interface.fxPopupDescription = 0;

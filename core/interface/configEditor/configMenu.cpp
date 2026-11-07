@@ -20,15 +20,15 @@
 #ifdef TRACKER_MINI
 constexpr uint8_t baseMenuGroupCount = 8;
 constexpr uint8_t projectMenuGroupCount = 10;
-constexpr uint8_t generalMenuGroupCount = 9;
+constexpr uint8_t generalMenuGroupCount = 10;
 #elif defined(PLATFORM_IMX)
 constexpr uint8_t baseMenuGroupCount = 7;
 constexpr uint8_t projectMenuGroupCount = 10;
-constexpr uint8_t generalMenuGroupCount = 12;
+constexpr uint8_t generalMenuGroupCount = 13;
 #else
 constexpr uint8_t baseMenuGroupCount = 6;
 constexpr uint8_t projectMenuGroupCount = 10;
-constexpr uint8_t generalMenuGroupCount = 12;
+constexpr uint8_t generalMenuGroupCount = 13;
 #endif
 
 // baza baz
@@ -99,6 +99,7 @@ void refreshThemeAndFontMenuOptions()
 
 const strItemTypeListTextWithAction setupPadsBrightness{ &mtConfig.general.padsBrightness, 3, brightness, setPadsBrightness };
 const strItemTypeListText setupRecQuantization{ &mtConfig.general.recOptions, 4, recOptionsTexts };
+const strItemTypeListText setupRecNoteLength{ &mtConfig.general.recNoteLength, std::size(recNoteLengthTexts), recNoteLengthTexts };
 const strItemTypeListText setupRecThreshold{ &mtConfig.general.recThreshold, recThreshold_count, recThresholdTexts };
 const strItemTypeListText setupHexMode{ &mtConfig.general.numberingMode, std::size(numberingModeTexts), numberingModeTexts };
 const strItemTypeListText setupPadPreviewInPatternEdit{ &mtConfig.general.padPreviewInPatternEdit, 3, padPreviewInPatternEditTexts };
@@ -146,6 +147,11 @@ cMenuItem melRecQuantization(menuGeneral,
                              recNotesDesc,
                              menuTypeItemListText,
                              &setupRecQuantization);
+cMenuItem melRecNoteLength(menuGeneral,
+                           "Rec. note length",
+                           recNoteLengthDesc,
+                           menuTypeItemListText,
+                           &setupRecNoteLength);
 cMenuItem melRecThreshold(menuGeneral,
                           "Recording Threshold",
                           recThresholdDesc,

@@ -556,6 +556,17 @@ enum enRecOptions
     recOptions_max = recOptions_microtimingAndVelocity,
 };
 
+// Live recording: what to store about how long a played note was held.
+// Value 0 is the default so that configs saved by older firmware (which do not contain this
+// field) come up with note length recording enabled.
+enum enRecNoteLength
+{
+    recNoteLength_on,  // gate FX for notes shorter than a step, OFF step (+micromove) for longer
+    recNoteLength_off, // original behaviour: OFF in the step following the release, no gate FX
+
+    recNoteLength_max = recNoteLength_off,
+};
+
 constexpr uint8_t recThreshold_default = 6; // -24
 constexpr uint8_t recThreshold_count = 16;
 constexpr uint8_t recThreshold_max = recThreshold_count - 1;
@@ -1118,6 +1129,7 @@ struct strMtConfig
         uint8_t font;
         uint8_t previewVolume;
         uint8_t recThreshold;
+        uint8_t recNoteLength; // enRecNoteLength, appended last to keep older configs readable
     } general;
 
     struct strInterfaceState

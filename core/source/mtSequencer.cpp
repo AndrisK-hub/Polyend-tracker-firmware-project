@@ -377,6 +377,13 @@ AUDIO_CORE_RAM void Sequencer::play_microStep(int row)
         playerRow.micromove.timer++;
     }
 
+    // live recording of note length: measure, in this track's own time, how long the note that is
+    // being recorded has been held (counted before the muted / inactive early returns below)
+    if (playerRow.recOpen && playerRow.recNoteTicks < UINT16_MAX)
+    {
+        playerRow.recNoteTicks++;
+    }
+
     if (playerRow.arp.isOn)
     {
         playerRow.arp.timer++;
@@ -783,6 +790,11 @@ AUDIO_CORE_RAM void Sequencer::play_microStep(int row)
             loadNextPattern(newFileManager.getNextSongPattern());
         }
 
+        // Keep the gate length with the step. When a micromove delays the note, the note starts on
+        // a later microstep than this one, and the local gateLength would be gone by then, which
+        // made Gate length FX silently ignored on steps that also have Micro-move.
+        stepToSend.gateLength = gateLength;
+
         if (!playerRow.cancelStep)
         {
             playerRow.micromove.arm(playerRow.stepToSend);
@@ -953,8 +965,8 @@ AUDIO_CORE_RAM void Sequencer::play_microStep(int row)
         playerRow.stepTimer = 0; // od tej pory timer liczy w górę
 
         // ustawiamy nute
-        playerRow.noteLength = gateLength; // ustawiany z fxa, -1 to nieskonczonosc
-        playerRow.noteTimer = 0;           // od tej pory timer liczy w górę
+        playerRow.noteLength = stepToSend.gateLength; // ustawiany z fxa, -1 to nieskonczonosc
+        playerRow.noteTimer = 0;                      // od tej pory timer liczy w górę
 
         if (player.track[row].noteOpen && !player.track[row].recOpen && stepToSend.note >= 0)
         {
@@ -2570,6 +2582,140 @@ uint8_t Sequencer::getDestRecordingStep(uint8_t track, bool quantize, bool noteO
     return destPos;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Live recording of note length
+// ---------------------------------------------------------------------------------------------
+
+namespace
+{
+constexpr int kRecMicrostepsPerStep = 48;
+
+// inverse of: gateLength(ticks) = mapClamped(value, 0, 100, 0, 47)   (see FX_TYPE_GATE_LENGTH)
+// ticks must be 1..47, returns the Gate FX value that plays back for exactly that many microsteps
+uint8_t gateValueForTicks(int ticks)
+{
+    return clamp<int>((ticks * 100 + 46) / 47, 0, 100);
+}
+
+// inverse of: delay(value) = map(value + 1, 0, 100, 1, 48)   (see micromove in play_microStep)
+// delay must be 1..48, returns the Micro-move value that delays a step by exactly that many
+// microsteps
+uint8_t micromoveValueForDelay(int delay)
+{
+    return clamp<int>(((delay - 1) * 100 + 46) / 47 - 1, 0, 100);
+}
+} // namespace
+
+bool Sequencer::isRecNoteLengthActive()
+{
+    // The length is measured against the running sequencer. When it is stopped there is no time
+    // axis, and in performance mode tracks may not run forward, so the original behaviour (OFF
+    // in the step following the note) is kept there.
+    return mtConfig.general.recNoteLength == recNoteLength_on && isPlay() &&
+           !player.performanceMode;
+}
+
+// Playback delay, in microsteps after the step boundary, of a note step. Mirrors play_microStep():
+// the optional MIDI instrument offset, plus the step's micromove when it has one.
+uint8_t Sequencer::getRecStartDelayTicks(uint8_t instrument, int8_t micromove)
+{
+    int offsetValue = 0;
+
+    if (isMidiInstrument(instrument) && getInstrumentMidiOffset(instrument) != 0)
+    {
+        offsetValue = map(getInstrumentMidiOffset(instrument) + 1, 0, 100, 1, 46);
+    }
+
+    if (micromove >= 0)
+    {
+        return clamp<int>(map(micromove + 1, 0, 100, 1, 48) + offsetValue,
+                          0,
+                          kRecMicrostepsPerStep * 2);
+    }
+
+    return offsetValue;
+}
+
+// Stores the length of the note that was just released on `track`, the way it was played.
+//
+// The note step (recNoteOnStepIdx) keeps its start. The end is expressed with what the pattern
+// format offers:
+//  - held for less than one step: a Gate length FX on the note step. Gate counts from the moment
+//    the note really starts (micromove included), so it is exact for any start position.
+//  - held for one step or more: an OFF step at the step where the note ends, with Micro-move for
+//    the position inside that step. The end is measured from the stored start of the note, so
+//    the stored length equals the played length even when the start was quantized.
+//
+// Returns true when the pattern was modified.
+bool Sequencer::writeRecordedNoteLength(uint8_t track)
+{
+    assert(track < kAllTracks);
+
+    strPattern::strTrack& patternTrack = currentPattern->track[track];
+    const int stepsInPattern = currentPattern->track[0].length + 1;
+    const int noteStepIdx = player.track[track].recNoteOnStepIdx;
+    strPattern::strTrack::strStep* noteStep = &patternTrack.step[noteStepIdx];
+
+    // the step we recorded the note into has been changed in the meantime
+    if (noteStep->note < 0)
+    {
+        return false;
+    }
+
+    const int heldTicks = std::max<int>(player.track[track].recNoteTicks, 1);
+
+    if (heldTicks < kRecMicrostepsPerStep)
+    {
+        int slot = -1;
+
+        if (noteStep->fx[0].type == fx.FX_TYPE_NONE)
+        {
+            slot = 0;
+        }
+        else if (noteStep->fx[1].type == fx.FX_TYPE_NONE)
+        {
+            slot = 1;
+        }
+
+        if (slot < 0)
+        {
+            return false;
+        }
+
+        noteStep->fx[slot].type = fx.FX_TYPE_GATE_LENGTH;
+        noteStep->fx[slot].value = gateValueForTicks(heldTicks);
+        return true;
+    }
+
+    // held through the whole pattern (or longer): it rings until the pattern comes around again
+    if (heldTicks >= stepsInPattern * kRecMicrostepsPerStep)
+    {
+        return false;
+    }
+
+    const int endTick =
+      noteStepIdx * kRecMicrostepsPerStep + player.track[track].recNoteStartDelay + heldTicks;
+    const int endStepIdx = (endTick / kRecMicrostepsPerStep) % stepsInPattern;
+    const int endDelay = endTick % kRecMicrostepsPerStep;
+
+    strPattern::strTrack::strStep* offStep = &patternTrack.step[endStepIdx];
+
+    // something else already lives there, e.g. the next note of a legato phrase
+    if (!offStep->isNoteEmpty())
+    {
+        return false;
+    }
+
+    offStep->note = STEP_NOTE_OFF_DEFAULT;
+
+    if (endDelay > 0)
+    {
+        offStep->micromove = micromoveValueForDelay(endDelay);
+    }
+
+    return true;
+}
+
 uint8_t Sequencer::recMicrotiming()
 {
     return mtConfig.general.recOptions == recOptions_microtimingAndVelocity ||
@@ -2678,6 +2824,7 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
         }
 
         bool isAnticipatedBeat1 = false;
+        uint8_t anticipatedTicks = 0; // how many microsteps before the downbeat it was played
         if (player.preRecMetronomeActive && isSetInternalClock())
         {
             uint8_t threshold = std::min<uint8_t>(mtConfig.general.recThreshold, recThreshold_max) * 4;
@@ -2692,6 +2839,7 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                     if (microValue >= (100 - threshold))
                     {
                         isAnticipatedBeat1 = true;
+                        anticipatedTicks = static_cast<uint8_t>(kRecMicrostepsPerStep + 1 - uStep);
                     }
                 }
             }
@@ -2776,6 +2924,12 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                         step->volume = velocityToVolume(velocity);
                         wasChangeInPattern = true;
                     }
+
+                    // for recording the note length: when the sequencer starts only after the
+                    // pre-roll, the time played ahead of the downbeat is not counted by the ticks
+                    player.track[tr].recNoteTicks = anticipatedTicks;
+                    player.track[tr].recNoteStartDelay =
+                      getRecStartDelayTicks(inst, step->micromove);
                 }
 
                 player.track[tr].stepSent.note = note;
@@ -2985,7 +3139,15 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
                         player.track[tr].noteOpen = 0;
                     }
 
-                    if (wasRecOpen && !padInstrumentEdit && !player.preRecMetronomeActive)
+                    if (wasRecOpen && !padInstrumentEdit && !player.preRecMetronomeActive &&
+                        isRecNoteLengthActive())
+                    {
+                        if (writeRecordedNoteLength(tr))
+                        {
+                            wasChangeInPattern = true;
+                        }
+                    }
+                    else if (wasRecOpen && !padInstrumentEdit && !player.preRecMetronomeActive)
                     {
                         uint8_t destinationStep = getDestRecordingStep(tr, !recMicrotiming(), true);
                         strPattern::strTrack::strStep* step =
@@ -3057,7 +3219,14 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
                         continue;
                     }
 
-                    if (wasRecOpen && !player.preRecMetronomeActive)
+                    if (wasRecOpen && !player.preRecMetronomeActive && isRecNoteLengthActive())
+                    {
+                        if (writeRecordedNoteLength(tr))
+                        {
+                            wasChangeInPattern = true;
+                        }
+                    }
+                    else if (wasRecOpen && !player.preRecMetronomeActive)
                     {
                         strPattern::strTrack::strStep* step =
                           &currentPattern->track[tr].step[destinationStep];
