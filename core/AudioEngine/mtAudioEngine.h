@@ -154,6 +154,8 @@ class audioEngine
     void setLastUsedVoice(uint8_t v);
     uint8_t getLastUsedVoice();
     void makeMetronomeTick(uint8_t);
+    // lets the sound of a running NES game (Tracker Mini) through to the output, or shuts it out
+    void setNesSoundEnabled(bool enabled);
     void setBlockedInstrument(int8_t idx);
     void clearBlockedInstrument(int8_t idx);
     void setBlockedNoteOnFromInstrument(int8_t idx);

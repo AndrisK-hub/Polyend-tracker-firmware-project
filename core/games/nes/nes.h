@@ -140,22 +140,153 @@ class Apu
     uint8_t readStatus(int64_t cpuCycle);
     void runTo(int64_t cpuCycle); // advance the sound generation to this CPU cycle
     bool irq() const { return frameIrq || dmcIrq; }
-    // Pulls up to 'count' mono samples (signed 16 bit, 44.1 kHz class rate) generated so far.
+
+    // The sound is made at the CPU clock and converted to 'sampleRate' with band-limited steps.
+    // readSamples() pulls finished mono samples (signed 16 bit); call it once per frame.
     int readSamples(int16_t* out, int count);
     int samplesAvailable() const;
-    void setSampleRate(uint32_t hz) { sampleRate = hz; }
+    void setSampleRate(uint32_t hz);
     void clearBuffer();
+
+    // Mixer output right now, unfiltered, in 1/16384 units (0 = silence, 16384 = full scale).
+    // Mostly useful for tests.
+    int mixLevel() const { return lastLevel; }
 
     bool frameIrq = false;
     bool dmcIrq = false;
 
+    static constexpr int kAccSize = 1024; // finished samples wait here (a frame is ~735)
+
   private:
+    struct Envelope
+    {
+        bool start = false;
+        bool loop = false; // also the length counter halt
+        bool constant = false;
+        uint8_t volume = 0; // the register value: the constant volume or the divider period
+        uint8_t divider = 0;
+        uint8_t decay = 0;
+        uint8_t level() const { return constant ? volume : decay; }
+        void clock();
+    };
+
+    struct Pulse
+    {
+        Envelope env;
+        bool enabled = false;
+        bool onesComplement = false; // pulse 1 negates its sweep differently
+        uint8_t duty = 0;
+        uint8_t dutyPos = 0;
+        uint8_t length = 0;
+        uint16_t period = 0;
+        bool sweepEnabled = false;
+        bool sweepNegate = false;
+        bool sweepReload = false;
+        uint8_t sweepPeriod = 0;
+        uint8_t sweepShift = 0;
+        uint8_t sweepDivider = 0;
+        int64_t next = 0; // CPU cycle of the next timer expiry (kNever when silent)
+        uint8_t out = 0;
+        bool muted() const;
+        bool active() const { return length > 0 && !muted(); }
+        void sweepClock();
+    };
+
+    struct Triangle
+    {
+        bool enabled = false;
+        bool control = false;
+        bool linearReload = false;
+        uint8_t linearValue = 0;
+        uint8_t linear = 0;
+        uint8_t length = 0;
+        uint8_t pos = 0;
+        uint16_t period = 0;
+        int64_t next = 0;
+        uint8_t out = 0;
+        bool active() const { return length > 0 && linear > 0 && period >= 2; }
+    };
+
+    struct Noise
+    {
+        Envelope env;
+        bool enabled = false;
+        bool shortMode = false;
+        uint8_t length = 0;
+        uint16_t lfsr = 1;
+        uint16_t period = 4;
+        int64_t next = 0;
+        uint8_t out = 0;
+    };
+
+    struct Dmc
+    {
+        bool irqEnable = false;
+        bool loop = false;
+        uint16_t rate = 428;
+        uint8_t level = 0;
+        uint8_t shift = 0;
+        uint8_t bits = 8;
+        bool silence = true;
+        bool bufferFull = false;
+        uint8_t buffer = 0;
+        uint16_t startAddr = 0xC000;
+        uint16_t addr = 0xC000;
+        uint16_t sampleLength = 1;
+        uint16_t bytesLeft = 0;
+        int64_t next = 0;
+    };
+
+    static constexpr int64_t kNever = INT64_MAX;
+
+    void clockQuarter();
+    void clockHalf();
+    void clockFrameStep();
+    void scheduleFrame();
+    void refreshOutputs();
+    void setMix(int64_t cycle);
+    void addStep(int64_t cycle, int delta);
+    void pulseSchedule(Pulse& p, int64_t now);
+    void triangleSchedule(int64_t now);
+    void noiseSchedule(int64_t now);
+    void dmcFetch();
+    void dmcClock();
+    void recomputeNext();
+    void advance(int64_t target);
+    void afterWrite(int64_t cycle);
+    int takeSample();
+
     Console* sys = nullptr;
     uint32_t sampleRate = 44100;
-    // implementation state lives in nes_apu.cpp's private struct
-    struct Impl;
-    alignas(8) uint8_t implStorage[1024];
-    Impl* impl();
+    uint64_t factor = 0;     // output samples per CPU cycle, 32 bit fraction
+    int64_t clockHz = 1789773;
+    float hpA1 = 0.99474f; // the two high-pass filters of the console's output (37 Hz and 14 Hz)
+    float hpA2 = 0.99800f;
+
+    Pulse pulse1, pulse2;
+    Triangle tri;
+    Noise noise;
+    Dmc dmc;
+
+    // frame counter
+    bool mode5 = false;
+    bool irqInhibit = false;
+    uint8_t frameIdx = 0;
+    int64_t frameStart = 0;
+    int64_t frameNext = 0;
+
+    int64_t now = 0;     // CPU cycle that has been run to
+    int64_t nextEvent = 0;
+    bool pal = false;
+
+    // sound synthesis
+    int lastLevel = 0;
+    int64_t baseCycle = 0;
+    uint64_t baseFrac = 0; // position of 'baseCycle' in output samples (32 bit fraction)
+    uint32_t readPos = 0;
+    int32_t acc[kAccSize];
+    int32_t integ = 0;
+    float hpX1 = 0, hpY1 = 0, hpX2 = 0, hpY2 = 0;
 };
 
 // ---------------------------------------------------------------------------------------------

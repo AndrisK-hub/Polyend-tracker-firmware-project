@@ -402,7 +402,7 @@ const char gamesPlayDesc[] = {
     "Middle - Start\n"
     "Hold Menu - quit\n\n"
 
-    "Beta: no sound yet."
+    "Beta: test build."
 };
 #endif
 

@@ -15,6 +15,9 @@
 #include "tempoSyncRateValues.h"
 #include "util.h"
 #include <Recorder.h>
+#ifdef TRACKER_MINI
+#include "nesAudio.h"
+#endif
 
 static constexpr int kSdStreamBufferSize = (256 + 64) * 1024;
 extern uint8_t externalRamScratchBuff[];
@@ -709,6 +712,13 @@ void audioEngine::connectSpecialInputsToOutput(AudioOutput* output)
                               0,
                               output->getFinalMixer((AudioOutput::OutputChannels)channel),
                               AudioOutput::FinalMixInputs::kMetronomeTick));
+#ifdef TRACKER_MINI
+        connections.push_back(
+          new AudioConnection(&nesAudioStream,
+                              0,
+                              output->getFinalMixer((AudioOutput::OutputChannels)channel),
+                              AudioOutput::FinalMixInputs::kNesEmulatorSound));
+#endif
     }
 }
 
@@ -1402,6 +1412,16 @@ AUDIO_CORE_RAM void audioEngine::setLastUsedVoice(uint8_t v)
 uint8_t audioEngine::getLastUsedVoice()
 {
     return lastUsedVoice;
+}
+
+void audioEngine::setNesSoundEnabled(bool enabled)
+{
+    constexpr float kNesSoundGain = 0.8f;
+    const float gain = enabled ? kNesSoundGain : 0.0f;
+    finalMixer[AudioOutput::OutputChannels::kLeft]->gain(
+      AudioOutput::FinalMixInputs::kNesEmulatorSound, gain);
+    finalMixer[AudioOutput::OutputChannels::kRight]->gain(
+      AudioOutput::FinalMixInputs::kNesEmulatorSound, gain);
 }
 
 AUDIO_CORE_RAM void audioEngine::makeMetronomeTick(uint8_t accent)

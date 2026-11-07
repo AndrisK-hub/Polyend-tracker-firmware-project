@@ -38,12 +38,16 @@ class cGameModule : public ModuleBase
     void showError(const char* reason);
     bool loadRom(const char* name);
     void presentFrame();
+    void collectSound();
 
     State state = kStateIdle;
     nes::Console* console = nullptr;
     uint8_t* backBuffer = nullptr;
     bool frameReady = false;
     uint32_t nextFrameUs = 0;
+    uint32_t frameMicros = 0;
+    uint32_t lastAudioBlocks = 0;
+    uint32_t lastAudioProgressUs = 0;
 
     hControl titleText = -1;
     hControl detailText = -1;

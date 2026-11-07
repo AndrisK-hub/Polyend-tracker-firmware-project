@@ -14,6 +14,7 @@
 #include "mtPadsBacklight.h"
 #include "mtSequencer.h"
 #include "nes/nes.h"
+#include "nesAudio.h"
 
 extern uint8_t externalRamScratchBuff[];
 extern void setMiniNavButtonLock(bool enabled);
@@ -34,14 +35,25 @@ constexpr uint8_t kMapMiddle = nes::kBtnStart;
 
 // ---------------------------------------------------------------------------------------------
 // Memory. The 768 KB scratch area in external RAM is free while a game runs:
-//   [ Console | ROM image | cartridge RAM and mapper state (arena) ... | back buffer ]
+//   [ Console | ROM image | cartridge RAM and mapper state (arena) ... | sound buffer | back buffer ]
 constexpr uint32_t kScratchSize = SHARED_SCRATCH_MEMORY_SIZE;
 constexpr uint32_t kFrameBytes = 256 * 240;
 constexpr uint32_t kBackBufferOffset = kScratchSize - kFrameBytes;
+constexpr uint32_t kAudioRingSamples = 4096; // a power of two; about 93 ms of sound
+constexpr uint32_t kAudioRingBytes = kAudioRingSamples * sizeof(int16_t);
+constexpr uint32_t kAudioRingOffset = kBackBufferOffset - kAudioRingBytes;
 constexpr uint32_t kMinArena = 16 * 1024; // the cartridge may still need much more; load() tells
 constexpr uint32_t kReadChunk = 16 * 1024; // a multiple of 512, as the SD driver wants
 
-constexpr uint32_t kFrameMicros = 16639; // NTSC: 60.0988 frames per second
+constexpr uint32_t kFrameMicros = 16639;    // NTSC: 60.0988 frames per second
+constexpr uint32_t kFrameMicrosPal = 19997; // PAL: 50.007 frames per second
+
+// While sound is playing, the audio clock sets the pace: the next picture is made when the sound
+// buffer has run down to this many samples (about 25 ms), which leaves room for one frame of
+// emulation without the sound running dry.
+constexpr uint32_t kAudioTargetFill = 1100;
+// Without a request for sound for this long (microseconds) the timer takes over again.
+constexpr int32_t kAudioStallUs = 100000;
 
 constexpr uint32_t alignUp32(uint32_t v)
 {
@@ -229,10 +241,10 @@ bool cGameModule::loadRom(const char* name)
     }
 
     const uint32_t consoleBytes = alignUp32(sizeof(nes::Console));
-    const uint32_t romMax = kBackBufferOffset - consoleBytes - kMinArena;
+    const uint32_t romMax = kAudioRingOffset - consoleBytes - kMinArena;
     if (fileSize > romMax)
     {
-        showError("The game is too big for the memory (limit about 700 KB)");
+        showError("The game is too big for the memory (limit about 690 KB)");
         return false;
     }
 
@@ -277,7 +289,7 @@ bool cGameModule::loadRom(const char* name)
 
     uint8_t* arena = rom + alignUp32(romBytes);
     backBuffer = base + kBackBufferOffset;
-    const uint32_t arenaBytes = static_cast<uint32_t>(backBuffer - arena);
+    const uint32_t arenaBytes = static_cast<uint32_t>((base + kAudioRingOffset) - arena);
 
     switch (console->load(rom, romBytes, arena, arenaBytes))
     {
@@ -323,6 +335,13 @@ void cGameModule::start(uint32_t options)
 
     setMiniNavButtonLock(false);
 
+    // the sound goes to the audio engine through a ring buffer at the end of the scratch memory
+    frameMicros = console->palTiming ? kFrameMicrosPal : kFrameMicros;
+    nesAudioStream.begin(reinterpret_cast<int16_t*>(externalRamScratchBuff + kAudioRingOffset), kAudioRingSamples);
+    engine.setNesSoundEnabled(true);
+    lastAudioBlocks = nesAudioStream.blocksRequested();
+    lastAudioProgressUs = platform->getTimer()->micros();
+
     ip->setButtonObj(interfaceButtonUp, functUp);
     ip->setButtonObj(interfaceButtonDown, functDown);
     ip->setButtonObj(interfaceButtonLeft, functLeft);
@@ -345,6 +364,10 @@ void cGameModule::start(uint32_t options)
 void cGameModule::stop()
 {
     moduleRefresh = 0;
+
+    // the sound buffer lives in the memory the game used; shut it out before anything else does
+    engine.setNesSoundEnabled(false);
+    nesAudioStream.end();
 
     if (state == kStateRunning)
     {
@@ -382,6 +405,21 @@ void cGameModule::presentFrame()
     }
 }
 
+// Hands the sound the emulated chip has made since the last call to the audio engine.
+void cGameModule::collectSound()
+{
+    int16_t samples[256];
+    for (;;)
+    {
+        const int count = console->apu.readSamples(samples, 256);
+        if (count <= 0)
+        {
+            break;
+        }
+        nesAudioStream.push(samples, static_cast<uint32_t>(count));
+    }
+}
+
 void cGameModule::update()
 {
     if (state != kStateRunning)
@@ -392,22 +430,47 @@ void cGameModule::update()
     presentFrame();
 
     const uint32_t now = platform->getTimer()->micros();
-    const int32_t late = static_cast<int32_t>(now - nextFrameUs);
-    if (late < 0)
-    {
-        return; // not time for the next frame yet
-    }
 
-    // If the console cannot keep up, skip ahead instead of racing to catch up.
-    if (late > static_cast<int32_t>(3 * kFrameMicros))
+    // The sound card takes samples at a fixed rate, so keeping a steady amount of sound waiting
+    // paces the game exactly and keeps picture and sound together. If the audio engine has not asked
+    // for sound lately, the timer sets the pace instead.
+    const uint32_t blocks = nesAudioStream.blocksRequested();
+    if (blocks != lastAudioBlocks)
     {
-        nextFrameUs = now;
+        lastAudioBlocks = blocks;
+        lastAudioProgressUs = now;
     }
-    nextFrameUs += kFrameMicros;
+    const bool audioClock =
+      nesAudioStream.isRunning() && static_cast<int32_t>(now - lastAudioProgressUs) < kAudioStallUs;
+
+    if (audioClock)
+    {
+        if (nesAudioStream.fill() > kAudioTargetFill)
+        {
+            return; // enough sound waiting; not time for the next frame yet
+        }
+        nextFrameUs = now + frameMicros;
+    }
+    else
+    {
+        const int32_t late = static_cast<int32_t>(now - nextFrameUs);
+        if (late < 0)
+        {
+            return; // not time for the next frame yet
+        }
+
+        // If the console cannot keep up, skip ahead instead of racing to catch up.
+        if (late > static_cast<int32_t>(3 * frameMicros))
+        {
+            nextFrameUs = now;
+        }
+        nextFrameUs += frameMicros;
+    }
 
     console->setPad(0, readPad());
     console->runFrame();
     frameReady = true;
+    collectSound();
 
     presentFrame();
 }
