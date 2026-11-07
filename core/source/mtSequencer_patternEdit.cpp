@@ -329,6 +329,34 @@ constexpr strDrumPattern drumPatterns[] = {
     // half-time
     {"B Half",
      {"x.........x.....", "........x.......", "x.x.x.x.x.x.x.x."}},
+    // synth-pop, new wave, Italo, disco, industrial and EBM style grooves
+    // (first drum machines: sparse kick and snare, eighth hats, a few accents)
+    // sparse synth-pop
+    {"B SynPop",
+     {"x.......x.....x.", "....x.......x...", "x.x.x.x.x.x.x.x."}},
+    // new wave: syncopated kick, open hat on the last offbeat
+    {"B NewWave",
+     {"x..x....x.x.....", "....x.......x...", "x.x.x.x.x.x.x...", "..............x."}},
+    // Italo: four on the floor, extra kick on the last offbeat, claps,
+    // closed hats on the offbeats and the open hat after the last beat
+    {"B Italo",
+     {"x...x...x...x.x.", "....x.......x...", "..x...x...x.....", "..............x."}},
+    // disco: sixteenth hats that leave out the snare steps, open hat on the offbeat
+    {"B Disco",
+     {"x...x...x...x...", "....x.......x...", "xx.x.x.xxx.x.x.x", "..x...x...x...x."}},
+    // stomp, stomp, clap
+    {"B Stomp",
+     {"x...x...........", "........x.......", "..x...x...x...x."}},
+    // industrial: heavy four on the floor, 3-3-3-3-4 metal hits, rim on the offbeats
+    {"B Indust",
+     {"x...x...x...x...", "....x.......x...", "x.x.x.x.x.x.x...", "..............x.",
+      "x..x..x..x..x...", "......x.......x."}},
+    // dark half-time
+    {"B Dark",
+     {"x.....x.......x.", "........x.......", "..x...x...x...x."}},
+    // EBM style pulse: eighth-note kick, sixteenth hats
+    {"B Pulse",
+     {"x.x.x.x.x.x.x.x.", "....x.......x...", "xxxxxxxxxxxxxxxx"}},
     // single rhythms: every selected track gets the same one
     {"K 4Floor", {"x...x...x...x..."}},  // four on the floor
     {"K Rock", {"x.......x.x....."}},  // 1, 3 and the "and" of 3
@@ -339,17 +367,23 @@ constexpr strDrumPattern drumPatterns[] = {
     {"K Trap", {"x......x..x....."}},  // trap
     {"K Drill", {"x..x.....x......"}},  // drill
     {"K Drop", {"........x......."}},  // one drop
+    {"K Italo", {"x...x...x...x.x."}},  // four on the floor, extra on the last offbeat
+    {"K Stomp", {"x...x..........."}},  // stomp, stomp
+    {"K Pulse", {"x.x.x.x.x.x.x.x."}},  // eighth notes
     {"S Back", {"....x.......x..."}},  // backbeat: 2 and 4
     {"S Half", {"........x......."}},  // half-time: 3 only
     {"S Dembow", {"...x..x....x..x."}},  // dembow, 3-3-2
     {"S Roll", {"............xxxx"}},  // roll on the last beat
     {"S Roll8", {"........xxxxxxxx"}},  // roll on the last half bar
+    {"S Turn", {"....x.......x.x."}},  // backbeat, extra hit before the end (turnaround)
     {"H 4ths", {"x...x...x...x..."}},  // quarter notes
     {"H 8ths", {"x.x.x.x.x.x.x.x."}},  // eighth notes
     {"H 16ths", {"xxxxxxxxxxxxxxxx"}},  // sixteenth notes
     {"H Offbeat", {"..x...x...x...x."}},  // offbeat (open hat in house)
     {"H 16 Off", {".x.x.x.x.x.x.x.x"}},  // off-sixteenths
     {"H Trap", {"x.x.x.x.x.x.xxxx"}},  // eighths, sixteenth burst on the last beat
+    {"H Disco16", {"xxxx.xxxxxxx.xxx"}},  // sixteenths, snare steps left out
+    {"H Tuck", {"..x...x...x..xx."}},  // offbeats with one extra sixteenth tucked in
     {"P Bossa", {"x..x..x...x..x.."}},  // bossa nova clave 3-2
     {"P Bossa23", {"..x..x..x..x..x."}},  // bossa nova clave 2-3
     {"P Son 3-2", {"x..x..x...x.x..."}},  // son clave 3-2
@@ -362,6 +396,9 @@ constexpr strDrumPattern drumPatterns[] = {
     {"P Tresill", {"x..x..x."}},  // tresillo (8 steps)
     {"P Cinquil", {"x.xx.xx."}},  // cinquillo (8 steps)
     {"P Habana", {"x..xx.x."}},  // habanera (8 steps)
+    {"P Clank", {"x..x..x..x..x..."}},  // 3-3-3-3-4, metal hits
+    {"P Rim", {"......x.......x."}},  // rim on the "and" of 2 and 4
+    {"P Pickup", {"..............x."}},  // one hit on the last offbeat
 };
 constexpr int16_t drumPatternsCount = sizeof(drumPatterns) / sizeof(drumPatterns[0]);
 static_assert(drumPatternsCount < 256, "a pattern number has to fit in 8 bits");
