@@ -267,8 +267,50 @@ class Sequencer
             CHANCE_PLAY_SKIP_END = CHANCE_PLAY_SKIP_START + CHANCE_CYCLE_COUNT - 1,
             CHANCE_SKIP_PLAY_START = CHANCE_PLAY_SKIP_END + 1,
             CHANCE_SKIP_PLAY_END = CHANCE_SKIP_PLAY_START + CHANCE_CYCLE_COUNT - 1,
-            CHANCE_MAX = CHANCE_SKIP_PLAY_END,
+
+            // "Pass A of B": plays on pass A (1..B) of every B passes of its track, B in 2..8.
+            // Ordered by B, then A: 2 + 3 + ... + 8 = 35 values.
+            CHANCE_AB_MIN_B = 2,
+            CHANCE_AB_MAX_B = 8,
+            CHANCE_AB_COUNT = 35,
+            CHANCE_AB_START = CHANCE_SKIP_PLAY_END + 1,
+            CHANCE_AB_END = CHANCE_AB_START + CHANCE_AB_COUNT - 1,
+
+            // plays only on the first pass after the sequencer starts or the pattern changes
+            CHANCE_FIRST = CHANCE_AB_END + 1,
+            // plays on every pass except the first
+            CHANCE_NOT_FIRST = CHANCE_FIRST + 1,
+
+            CHANCE_MAX = CHANCE_NOT_FIRST,
         };
+        static_assert(CHANCE_AB_COUNT == (CHANCE_AB_MIN_B + CHANCE_AB_MAX_B) *
+                                           (CHANCE_AB_MAX_B - CHANCE_AB_MIN_B + 1) / 2,
+                      "A/B condition count");
+        static_assert(CHANCE_MAX <= 255, "Chance value is stored in one byte");
+
+        // Chance value <-> "pass A of B". The first entry of group B is at (B - 1) * B / 2 - 1.
+        static constexpr uint8_t chanceEncodeAB(uint8_t a, uint8_t b)
+        {
+            return static_cast<uint8_t>(CHANCE_AB_START + (b - 1) * b / 2 - 1 + (a - 1));
+        }
+        static constexpr bool chanceDecodeAB(uint8_t value, uint8_t& a, uint8_t& b)
+        {
+            if (value < CHANCE_AB_START || value > CHANCE_AB_END)
+                return false;
+
+            int idx = value - CHANCE_AB_START;
+            for (int bb = CHANCE_AB_MIN_B; bb <= CHANCE_AB_MAX_B; bb++)
+            {
+                if (idx < bb)
+                {
+                    a = static_cast<uint8_t>(idx + 1);
+                    b = static_cast<uint8_t>(bb);
+                    return true;
+                }
+                idx -= bb;
+            }
+            return false;
+        }
 
     } fx;
 
@@ -829,6 +871,8 @@ class Sequencer
     void clearCopyPasteBuffer();
 
     void changeSelectionFxValue(uint8_t index, int16_t value);
+    // Coarse (+10 / -10) change of a Chance value; walks the groups of conditions, not single values
+    static uint8_t chanceCoarseStep(uint8_t value, int16_t delta);
     void changeSelectionFxType(uint8_t index, int16_t value);
     void changeSelectionNote(int16_t value);
     void changeSelectionNote(int16_t value, bool octaveShift);

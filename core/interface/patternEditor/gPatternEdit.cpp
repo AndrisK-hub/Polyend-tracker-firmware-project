@@ -1786,6 +1786,25 @@ void cPatternEditor::showActualParamOnBar(bool forceShow)
                              n,
                              m);
                 }
+                else if (val >= sequencer.fx.CHANCE_AB_START && val <= sequencer.fx.CHANCE_AB_END)
+                {
+                    uint8_t a = 0;
+                    uint8_t b = 0;
+                    sequencer.fx.chanceDecodeAB(val, a, b);
+                    snprintf(rightTitleBarLabel,
+                             sizeof(rightTitleBarLabel),
+                             "Chance: Pass %u of %u",
+                             a,
+                             b);
+                }
+                else if (val == sequencer.fx.CHANCE_FIRST)
+                {
+                    strncpy(rightTitleBarLabel, "Chance: First Pass", 35);
+                }
+                else if (val == sequencer.fx.CHANCE_NOT_FIRST)
+                {
+                    strncpy(rightTitleBarLabel, "Chance: Not First Pass", 35);
+                }
             }
             else
             {

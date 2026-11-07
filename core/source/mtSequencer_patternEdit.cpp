@@ -708,6 +708,63 @@ void Sequencer::changeSelectionNote(int16_t value, bool octaveShift)
     }
 }
 
+uint8_t Sequencer::chanceCoarseStep(uint8_t value, int16_t delta)
+{
+    // order of the values: 0..100 %, group with last, not last, play/skip cycles (n up, m up),
+    // skip/play cycles, "pass A of B" (B up, A up), first, not first
+    if (value > fx.CHANCE_MAX)
+        value = fx.CHANCE_MAX;
+
+    uint8_t a = 0;
+    uint8_t b = 0;
+
+    if (delta > 1)
+    {
+        if (value < fx.CHANCE_PROB_MAX)
+            return static_cast<uint8_t>(std::min<int>(value + delta, fx.CHANCE_PROB_MAX));
+        if (value == fx.CHANCE_PROB_MAX)
+            return fx.CHANCE_GROUP_WITH_LAST;
+        if (value == fx.CHANCE_GROUP_WITH_LAST)
+            return fx.CHANCE_NOT_LAST;
+        if (value == fx.CHANCE_NOT_LAST)
+            return fx.CHANCE_PLAY_SKIP_START;
+        if (value == fx.CHANCE_FIRST || value == fx.CHANCE_NOT_FIRST)
+            return fx.CHANCE_NOT_FIRST;
+        if (fx.chanceDecodeAB(value, a, b))
+        {
+            // first value of the next B group
+            return (b < fx.CHANCE_AB_MAX_B) ? fx.chanceEncodeAB(1, static_cast<uint8_t>(b + 1))
+                                            : static_cast<uint8_t>(fx.CHANCE_FIRST);
+        }
+
+        int next = value + fx.CHANCE_CYCLE_STEPS;
+        return static_cast<uint8_t>(next > fx.CHANCE_SKIP_PLAY_END ? fx.CHANCE_AB_START : next);
+    }
+
+    if (value <= fx.CHANCE_PROB_MAX)
+        return static_cast<uint8_t>(std::max<int>(value + delta, 0));
+    if (value == fx.CHANCE_GROUP_WITH_LAST)
+        return fx.CHANCE_PROB_MAX;
+    if (value == fx.CHANCE_NOT_LAST)
+        return fx.CHANCE_GROUP_WITH_LAST;
+    if (value == fx.CHANCE_NOT_FIRST)
+        return fx.CHANCE_FIRST;
+    if (value == fx.CHANCE_FIRST)
+        return fx.chanceEncodeAB(1, fx.CHANCE_AB_MAX_B);
+    if (fx.chanceDecodeAB(value, a, b))
+    {
+        if (a > 1)
+            return fx.chanceEncodeAB(1, b); // start of this B group
+        if (b > fx.CHANCE_AB_MIN_B)
+            return fx.chanceEncodeAB(1, static_cast<uint8_t>(b - 1));
+        return fx.CHANCE_SKIP_PLAY_END;
+    }
+    if (value < fx.CHANCE_PLAY_SKIP_START + fx.CHANCE_CYCLE_STEPS)
+        return fx.CHANCE_NOT_LAST;
+
+    return static_cast<uint8_t>(value - fx.CHANCE_CYCLE_STEPS);
+}
+
 void Sequencer::changeSelectionFxValue(uint8_t fxIndex, int16_t value)
 {
 
@@ -731,32 +788,7 @@ void Sequencer::changeSelectionFxValue(uint8_t fxIndex, int16_t value)
 
             if (_fx->type == fx.FX_TYPE_CHANCE && (value > 1 || value < -1))
             {
-                if (value > 1)
-                {
-                    if (_fx->value < fx.CHANCE_PROB_MAX)
-                        _fx->value = std::min<int>(_fx->value + value, fx.CHANCE_PROB_MAX);
-                    else if (_fx->value == fx.CHANCE_PROB_MAX)
-                        _fx->value = fx.CHANCE_GROUP_WITH_LAST;
-                    else if (_fx->value == fx.CHANCE_GROUP_WITH_LAST)
-                        _fx->value = fx.CHANCE_NOT_LAST;
-                    else if (_fx->value == fx.CHANCE_NOT_LAST)
-                        _fx->value = fx.CHANCE_PLAY_SKIP_START;
-                    else
-                        _fx->value = std::min<int>(_fx->value + fx.CHANCE_CYCLE_STEPS, fx.CHANCE_MAX);
-                }
-                else
-                {
-                    if (_fx->value <= fx.CHANCE_PROB_MAX)
-                        _fx->value = std::max<int>(_fx->value + value, 0);
-                    else if (_fx->value == fx.CHANCE_GROUP_WITH_LAST)
-                        _fx->value = fx.CHANCE_PROB_MAX;
-                    else if (_fx->value == fx.CHANCE_NOT_LAST)
-                        _fx->value = fx.CHANCE_GROUP_WITH_LAST;
-                    else if (_fx->value < fx.CHANCE_PLAY_SKIP_START + fx.CHANCE_CYCLE_STEPS)
-                        _fx->value = fx.CHANCE_NOT_LAST;
-                    else
-                        _fx->value = _fx->value - fx.CHANCE_CYCLE_STEPS;
-                }
+                _fx->value = chanceCoarseStep(_fx->value, value);
             }
             else
             {
@@ -2016,6 +2048,21 @@ void Sequencer::makeFxValLabelWithAlgin(char* ptr,
                 uint8_t n = 1 + idx / fx.CHANCE_CYCLE_STEPS;
                 uint8_t m = 1 + idx % fx.CHANCE_CYCLE_STEPS;
                 snprintf(ptr, len, "S%u%u", n, m);
+            }
+            else if (valueFromFx >= fx.CHANCE_AB_START && valueFromFx <= fx.CHANCE_AB_END)
+            {
+                uint8_t a = 0;
+                uint8_t b = 0;
+                fx.chanceDecodeAB(valueFromFx, a, b);
+                snprintf(ptr, len, "%u/%u", a, b);
+            }
+            else if (valueFromFx == fx.CHANCE_FIRST)
+            {
+                strncpy(ptr, "1ST", len);
+            }
+            else if (valueFromFx == fx.CHANCE_NOT_FIRST)
+            {
+                strncpy(ptr, "!1S", len);
             }
             break;
         }

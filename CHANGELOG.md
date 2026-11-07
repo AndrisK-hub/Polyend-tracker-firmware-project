@@ -24,6 +24,15 @@ All notable changes to the **Polyend Tracker Community Edition (CE)** firmware a
    * `Off`: the original behavior. Only the note is stored and, when recording live, an `OFF` is placed in the step following it.
    * During the pre-roll and in Performance mode the original behavior is always used.
 
+3. **Pass conditions for the `Chance` FX: `A/B`, `1ST`, `!1S` (All 3 Devices)**
+   * Three more `Chance` (`C`) modes after the existing ones. They count how many times the track has played its pattern (a pass), like the existing `Play N / Skip M` cycles, and are restarted by the same events (play start, pattern change).
+     * **Pass A of B (`C 1/2`–`C 8/8`)**: Plays only on pass `A` of every `B` passes (`B` in `2..8`, `A` in `1..B`). `C 2/4` plays on the 2nd, 6th, 10th... pass.
+     * **First pass (`C 1ST`)**: Plays only on the first pass after the sequencer starts or the pattern changes.
+     * **Not first pass (`C !1S`)**: Plays on every pass except the first.
+   * Like the other conditions, they set the "last" state used by `C GL` and `C !L`.
+   * They follow `Skip N / Play M` in the value list, so `+1` / `-1` walk through them and `+10` / `-10` jump to the next group (next `B`).
+   * No file format change: the modes are new values of the existing `Chance` FX value byte. A firmware that does not know them (stock/CE) plays such a step on every pass.
+
 ### Fixed
 
 1. **`Gate length` FX is no longer ignored on steps that also have `Micro-move`.** The gate length is now carried along with the step until the delayed note actually starts. Patterns that combine both on one step will now play their gate; before, the note kept ringing.
