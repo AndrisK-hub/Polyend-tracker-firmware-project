@@ -38,7 +38,7 @@ class cSongTimer
         int minutes;
         uint8_t seconds;
         uint8_t pattern;
-        uint8_t step;
+        uint16_t step;
         Sequencer::enSeqState seqState;
     } actualData, lastData;
 };

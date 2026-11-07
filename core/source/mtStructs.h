@@ -42,7 +42,35 @@ const char firmwareVersionLabelFormatBeta[] = "%d.%d.%d " FW_EDITION_NAME " beta
 
 const uint8_t PROJECT_FILE_VERSION = 17;   // wersja struktury pliku projektu
 const uint8_t INSTRUMENT_FILE_VERSION = 9; // wersja struktury pliku instrumentu
+
+// Maximum number of steps in one pattern (per track).
+// The Mini supports long patterns; the other devices keep the original 128 steps.
+// Allowed values: 128, 512, 1024 - each one has its own pattern file version.
+// Can be overridden at build time with -DPATTERN_MAX_STEPS=<n>.
+#ifndef PATTERN_MAX_STEPS
+#ifdef TRACKER_MINI
+#define PATTERN_MAX_STEPS 512
+#else
+#define PATTERN_MAX_STEPS 128
+#endif
+#endif
+
+#if PATTERN_MAX_STEPS == 128
 const uint8_t PATTERN_FILE_VERSION = 6;
+#elif PATTERN_MAX_STEPS == 512
+const uint8_t PATTERN_FILE_VERSION = 7;
+#elif PATTERN_MAX_STEPS == 1024
+const uint8_t PATTERN_FILE_VERSION = 8;
+#else
+#error "PATTERN_MAX_STEPS must be 128, 512 or 1024"
+#endif
+
+// type of the pattern length field stored in every track (counts from 0)
+#if PATTERN_MAX_STEPS > 256
+typedef uint16_t PatternLength_t;
+#else
+typedef uint8_t PatternLength_t;
+#endif
 
 const uint8_t CONFIG_STRUCT_VER = 10;
 
@@ -91,8 +119,13 @@ static constexpr int kAllTracks = kSampleTracks + kMidiTracks;
 
 static constexpr int k16TracksPatternSize_v5 = 12336;
 static constexpr int k12TracksPatternSize_v5 = 9260;
-static constexpr int k16TracksPatternSize = 16432;
 static constexpr int k12TracksPatternSize = 12332;
+static constexpr int kPatternMaxSteps = PATTERN_MAX_STEPS;
+// 128-step layouts: 16 tracks, 4 byte header padding included, CRC at the end
+static constexpr int k16TracksPatternSize_128steps = 16432;
+// size of the whole pattern file / structure for the current PATTERN_MAX_STEPS
+static constexpr int k16TracksPatternSize =
+  28 + kAllTracks * (static_cast<int>(sizeof(PatternLength_t)) + 8 * kPatternMaxSteps) + 4;
 
 static constexpr int kMaxMidiTracksInTrackers =
   8; // taking into account all tracker types mini/+/OG

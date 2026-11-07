@@ -5,7 +5,7 @@
 class CrcCalculatorImpl : public CrcCalculator
 {
   public:
-    virtual uint32_t calculate32bitCrc(const uint8_t* data, const uint16_t datalen) override;
+    virtual uint32_t calculate32bitCrc(const uint8_t* data, const uint32_t datalen) override;
 };
 
 #endif /* SOURCE_CRCCALCULATORIMPL_H_ */

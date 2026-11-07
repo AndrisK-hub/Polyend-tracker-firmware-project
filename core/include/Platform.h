@@ -61,7 +61,7 @@ class Platform
 class CrcCalculator
 {
   public:
-    virtual uint32_t calculate32bitCrc(const uint8_t* data, const uint16_t datalen) = 0;
+    virtual uint32_t calculate32bitCrc(const uint8_t* data, const uint32_t datalen) = 0;
 };
 
 class Midi

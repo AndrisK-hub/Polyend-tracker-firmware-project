@@ -208,13 +208,13 @@ bool cFileManager::updatePatternBitmask(uint8_t patternIdx, Sequencer::strPatter
     uint16_t dataBefore = mtProject.values.allPatternsBitmask[bitmaskIdx] |
                           (mtProject.values.allPatternsBitmaskMidi[bitmaskIdx] << 8);
 
-    uint8_t length = sourcePattern->track[0].length;
+    uint16_t length = sourcePattern->track[0].length;
 
     for (uint8_t trackNum = 0; trackNum < kAllTracks; trackNum++)
     {
         bool isAnyActive = false;
 
-        for (uint8_t stepIdx = 0; stepIdx <= length; stepIdx++)
+        for (uint16_t stepIdx = 0; stepIdx <= length; stepIdx++)
         {
             Sequencer::strPattern::strTrack::strStep* step =
               &((Sequencer::strPattern*)sourcePattern)->track[trackNum].step[stepIdx];

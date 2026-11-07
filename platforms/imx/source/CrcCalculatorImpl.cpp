@@ -1,7 +1,7 @@
 #include "CrcCalculatorImpl.h"
 #include "polyassert.h"
 
-uint32_t CrcCalculatorImpl::calculate32bitCrc(const uint8_t* data, const uint16_t datalen)
+uint32_t CrcCalculatorImpl::calculate32bitCrc(const uint8_t* data, const uint32_t datalen)
 {
     (void)data;
     (void)datalen;

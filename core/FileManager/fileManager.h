@@ -552,8 +552,7 @@ class cFileManager
     void translateVolumeFxInPatternFromFileVersion3ToFileVersion4(
       Sequencer::strPattern* patternToTranslate);
     void translatePatternFromFileVersion4ToFileVersion5(Sequencer::strPattern* patternToTranslate);
-    void translatePatternFromFileVersion5ToFileVersion6(Sequencer::strPattern* patternToTranslate);
-    void translatePatternWithDifferentTrackCount(Sequencer::strPattern* pattern);
+    void expandPatternToCurrentLayout(Sequencer::strPattern* pattern, uint8_t version);
 
     uint32_t calcProjectPatternsSize();
 

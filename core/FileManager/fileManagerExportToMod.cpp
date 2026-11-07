@@ -1444,7 +1444,7 @@ void cFileManager::exportItFile_ProcessPatterns()
 
     uint16_t length = 0;
 
-    for (uint8_t stepIdx = 0; stepIdx <= patt->track[0].length; stepIdx++)
+    for (uint16_t stepIdx = 0; stepIdx <= patt->track[0].length; stepIdx++)
     {
         for (uint8_t tr = 0; tr < kAllTracks; tr++)
         {

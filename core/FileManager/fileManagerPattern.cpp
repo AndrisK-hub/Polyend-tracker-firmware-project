@@ -20,8 +20,14 @@ __NOINIT(EXTERNAL_RAM) Sequencer::strPattern fileManagerPerformancePatternBuffer
 static_assert(PatternFileValidation::k12TracksPatternSizeV5 == k12TracksPatternSize_v5);
 static_assert(PatternFileValidation::k16TracksPatternSizeV5 == k16TracksPatternSize_v5);
 static_assert(PatternFileValidation::k12TracksPatternSize == k12TracksPatternSize);
-static_assert(PatternFileValidation::k16TracksPatternSize == k16TracksPatternSize);
-static_assert(PatternFileValidation::k16TracksPatternSize == sizeof(Sequencer::strPattern));
+static_assert(PatternFileValidation::k16TracksPatternSize128Steps == k16TracksPatternSize_128steps);
+static_assert(PatternFileValidation::layoutSize(kAllTracks,
+                                                sizeof(PatternLength_t),
+                                                PatternFileValidation::kStepBytes,
+                                                kPatternMaxSteps) ==
+              sizeof(Sequencer::strPattern));
+static_assert(PatternFileValidation::kHeaderBytes == offsetof(Sequencer::strPattern, track));
+static_assert(PatternFileValidation::kStepBytes == sizeof(Sequencer::strPattern::strTrack::strStep));
 
 void cFileManager::updateLoadWorkspacePattern()
 {
@@ -306,7 +312,8 @@ bool cFileManager::validatePatternFileData(const char* filePath,
     PatternFileValidation::Layout layout;
     uint8_t version = pattern->header.fileStructureVersion[0];
 
-    if (!PatternFileValidation::resolveLayout(version, pattern->header.size, fileSize, layout))
+    if (!PatternFileValidation::resolveLayout(
+          version, pattern->header.size, fileSize, kPatternMaxSteps, layout))
     {
         report("load pattern file - invalid size ", filePath);
         return false;
@@ -358,41 +365,50 @@ bool cFileManager::readPatternFile(const char* filePath, Sequencer::strPattern* 
 
 void cFileManager::checkVersionAndTranslate(Sequencer::strPattern* pattern)
 {
+    const uint8_t version = pattern->header.fileStructureVersion[0];
 
-    if (pattern->header.fileStructureVersion[0] < PATTERN_FILE_VERSION)
+    // older files are a smaller image (fewer steps / tracks, shorter steps) at the start of the
+    // buffer - bring it to the current layout first, the translations below work on that
+    expandPatternToCurrentLayout(pattern, version);
+
+    if (version < PATTERN_FILE_VERSION)
     {
-        if (pattern->header.fileStructureVersion[0] <= 5)
-        {
-            translatePatternFromFileVersion5ToFileVersion6(pattern);
-        }
-
-        if (pattern->header.fileStructureVersion[0] <= 1)
+        if (version <= 1)
         {
             translateVolumeFxInPatternFromFileVersion1ToFileVersion2(pattern);
         }
 
-        if (pattern->header.fileStructureVersion[0] <= 2)
+        if (version <= 2)
         {
             translateBeatSliceNoteInPatternFromFileVersionLessThan3(pattern);
         }
 
-        if (pattern->header.fileStructureVersion[0] <= 3)
+        if (version <= 3)
         {
             translateVolumeFxInPatternFromFileVersion3ToFileVersion4(pattern);
         }
 
-        if (pattern->header.fileStructureVersion[0] <= 4)
+        if (version <= 4)
         {
             translatePatternFromFileVersion4ToFileVersion5(pattern);
         }
-
-        for (uint8_t i = 0; i < 4; i++)
-        {
-            pattern->header.fileStructureVersion[i] = PATTERN_FILE_VERSION;
-        }
     }
 
-    translatePatternWithDifferentTrackCount(pattern);
+    for (uint8_t i = 0; i < 4; i++)
+    {
+        pattern->header.fileStructureVersion[i] = PATTERN_FILE_VERSION;
+    }
+    pattern->header.size =
+      PatternFileValidation::headerSizeField(PATTERN_FILE_VERSION, sizeof(Sequencer::strPattern));
+
+    // a damaged file must not be able to point outside of the steps array
+    for (auto& track : pattern->track)
+    {
+        if (track.length > Sequencer::MAXSTEP)
+        {
+            track.length = Sequencer::MAXSTEP;
+        }
+    }
 }
 
 void cFileManager::translateVolumeFxInPatternFromFileVersion1ToFileVersion2(
@@ -403,9 +419,9 @@ void cFileManager::translateVolumeFxInPatternFromFileVersion1ToFileVersion2(
 
     for (uint8_t track_idx = 0; track_idx < 8; track_idx++)
     {
-        uint8_t trackLengthInSteps = patternToTranslate->track[track_idx].length + 1;
+        uint16_t trackLengthInSteps = patternToTranslate->track[track_idx].length + 1;
 
-        for (uint8_t step_idx = 0; step_idx < trackLengthInSteps; step_idx++)
+        for (uint16_t step_idx = 0; step_idx < trackLengthInSteps; step_idx++)
         {
             bool isMidiInstrument =
               (patternToTranslate->track[track_idx].step[step_idx].instrument >
@@ -438,9 +454,9 @@ void cFileManager::translateBeatSliceNoteInPatternFromFileVersionLessThan3(
 
     for (uint8_t track_idx = 0; track_idx < 8; track_idx++)
     {
-        uint8_t trackLengthInSteps = patternToTranslate->track[track_idx].length + 1;
+        uint16_t trackLengthInSteps = patternToTranslate->track[track_idx].length + 1;
 
-        for (uint8_t step_idx = 0; step_idx < trackLengthInSteps; step_idx++)
+        for (uint16_t step_idx = 0; step_idx < trackLengthInSteps; step_idx++)
         {
             bool isMidiInstrument =
               (patternToTranslate->track[track_idx].step[step_idx].instrument >
@@ -484,9 +500,9 @@ void cFileManager::translateVolumeFxInPatternFromFileVersion3ToFileVersion4(
 
     for (uint8_t track_idx = 0; track_idx < 8; track_idx++)
     {
-        uint8_t trackLengthInSteps = patternToTranslate->track[track_idx].length + 1;
+        uint16_t trackLengthInSteps = patternToTranslate->track[track_idx].length + 1;
 
-        for (uint8_t step_idx = 0; step_idx < trackLengthInSteps; step_idx++)
+        for (uint16_t step_idx = 0; step_idx < trackLengthInSteps; step_idx++)
         {
             bool isMidiInstrument =
               (patternToTranslate->track[track_idx].step[step_idx].instrument >
@@ -523,72 +539,35 @@ void cFileManager::translatePatternFromFileVersion4ToFileVersion5(
     }
 }
 
-void cFileManager::translatePatternFromFileVersion5ToFileVersion6(
-  Sequencer::strPattern* patternToTranslate)
+void cFileManager::expandPatternToCurrentLayout(Sequencer::strPattern* pattern,
+                                                uint8_t version)
 {
-    struct strTrack_v5
+    PatternFileValidation::Layout layout;
+
+    if (!PatternFileValidation::describeLayout(
+          version, pattern->header.size, kPatternMaxSteps, layout))
     {
-        uint8_t length;
-        struct strStep_v5
-        {
-            int8_t note;
-            uint8_t instrument;
-            Sequencer::strPattern::strTrack::strStep::strFx fx[Sequencer::kStepFxSlots];
-        } step[Sequencer::MAXSTEP + 1];
-    };
-
-    const strTrack_v5* srcTracks = reinterpret_cast<const strTrack_v5*>(patternToTranslate->track);
-
-    for (int trackIdx = kAllTracks - 1; trackIdx >= 0; --trackIdx)
-    {
-        const strTrack_v5 srcTrack = srcTracks[trackIdx];
-        patternToTranslate->track[trackIdx].length = srcTrack.length;
-
-        for (int stepIdx = 0; stepIdx <= Sequencer::MAXSTEP; ++stepIdx)
-        {
-            auto& dstStep = patternToTranslate->track[trackIdx].step[stepIdx];
-            const auto& srcStep = srcTrack.step[stepIdx];
-
-            dstStep.note = srcStep.note;
-            dstStep.instrument = srcStep.instrument;
-            dstStep.fx[0] = srcStep.fx[0];
-            dstStep.fx[1] = srcStep.fx[1];
-            dstStep.volume = Sequencer::STEP_VELO_DEFAULT;
-            dstStep.micromove = -1;
-        }
-    }
-}
-
-void cFileManager::translatePatternWithDifferentTrackCount(Sequencer::strPattern* pattern)
-{
-    if (pattern->header.size == sizeof(Sequencer::strPattern) ||
-        pattern->header.size == k16TracksPatternSize_v5 ||
-        pattern->header.size == k16TracksPatternSize)
-    {
-        pattern->header.size = sizeof(Sequencer::strPattern);
         return;
     }
 
-    int clearAllFromTrackIdx = 8;
-
-    if (pattern->header.size < k12TracksPatternSize_v5)
+    if (PatternFileValidation::isCurrentLayout(
+          layout, kPatternMaxSteps, sizeof(PatternLength_t), kAllTracks))
     {
-        clearAllFromTrackIdx = 8;
-    }
-    else if (pattern->header.size == k12TracksPatternSize_v5 ||
-             pattern->header.size == k12TracksPatternSize)
-    {
-        clearAllFromTrackIdx = 12;
+        return;
     }
 
-    for (int trackIdx = clearAllFromTrackIdx; trackIdx < kAllTracks; trackIdx++)
-    {
-        pattern->track[trackIdx].length = pattern->track[0].length;
+    Sequencer::strPattern::strTrack::strStep emptyStep{};
+    sequencer.clearStep(&emptyStep);
 
-        sequencer.clearSingleTrack(&pattern->track[trackIdx]);
-    }
+    uint8_t emptyStepBytes[PatternFileValidation::kStepBytes];
+    memcpy(emptyStepBytes, &emptyStep, sizeof(emptyStepBytes));
 
-    pattern->header.size = sizeof(Sequencer::strPattern);
+    PatternFileValidation::expandPatternImage(reinterpret_cast<uint8_t*>(pattern),
+                                              layout,
+                                              kPatternMaxSteps,
+                                              sizeof(PatternLength_t),
+                                              kAllTracks,
+                                              emptyStepBytes);
 }
 
 /// tu tylko ladujemy do bufora, podmieniamy w sequ

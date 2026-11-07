@@ -413,7 +413,7 @@ void cPatternEditor::showLength(uint8_t forceShow)
 
     const char* numberFormat =
       mtConfig.general.numberingMode == NumberingMode::kHexadecimal ? "%02X" : "%d";
-    uint8_t localLength = sequencer.getPatternToUI()->track[0].length + 1;
+    uint16_t localLength = sequencer.getPatternToUI()->track[0].length + 1;
 
     if (lastLength != localLength || forceShow)
     {

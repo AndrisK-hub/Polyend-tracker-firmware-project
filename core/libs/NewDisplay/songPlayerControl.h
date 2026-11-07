@@ -39,8 +39,8 @@ typedef struct
     uint8_t isPlaying;
     uint8_t trackPreview;
     uint8_t currentSongPosition;
-    uint8_t patternLength;
-    uint8_t positionInPattern;
+    uint16_t patternLength;
+    uint16_t positionInPattern;
 
 } progress_control_t;
 
