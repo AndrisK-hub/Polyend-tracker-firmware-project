@@ -33,6 +33,13 @@ All notable changes to the **Polyend Tracker Community Edition (CE)** firmware a
    * They follow `Skip N / Play M` in the value list, so `+1` / `-1` walk through them and `+10` / `-10` jump to the next group (next `B`).
    * No file format change: the modes are new values of the existing `Chance` FX value byte. A firmware that does not know them (stock/CE) plays such a step on every pass.
 
+4. **Drum patterns for Fill: `Where?` > `Drums` (All 3 Devices)**
+   * New entry **Drums** at the end of the `Where?` list of the Fill popup (after `Euclidean`), in the Note, Instrument, Micro-move, Volume and Fx fills. It chooses the steps of the selection by a drum pattern, the same way `Each`, `Random` and `Euclidean` choose them. Everything else in the popup (Scale, Fill Type, From / To) works as before, so the hits get the note or value you set there.
+   * The `Density` slot becomes **Pattern**. Step through it with `+` / `-` (or the pads, the first pad is `Random`). The first entry is `Random`, then 22 patterns, each one rhythm for one track: kicks (`K 4Floor`, `K Rock`, `K Basic`, `K 2Step`), snare/clap (`S Back`, `S Half`, `S Dembow`, `S Roll`), hats (`H 4ths`, `H 8ths`, `H 16ths`, `H Offbeat`, `H 16 Off`, `H Trap`) and percussion (bossa, son and rumba claves in 3-2 and 2-3, tresillo, cinquillo).
+   * The pattern starts at the first selected step and repeats over the selection. Only the hit steps are written; the other steps are left alone. Filling again with another pattern therefore adds to what is there, which is how patterns are combined.
+   * `Random` picks a new pattern on every fill (one pattern for the whole selection).
+   * No file format change.
+
 ### Fixed
 
 1. **`Gate length` FX is no longer ignored on steps that also have `Micro-move`.** The gate length is now carried along with the step until the delayed note actually starts. Patterns that combine both on one step will now play their gate; before, the note kept ringing.

@@ -56,14 +56,15 @@ const char* ptrfillScaleFilterNames[fillScaleFilterCount] = {
     &fillScaleFilterLabels[1][0],
 };
 //------------------------------------------------------------
-static const uint8_t fillStepCount = 7;
+static const uint8_t fillStepCount = 8;
+static_assert(fillStepCount == Sequencer::fillStepEnd__, "one name for every fill step rule");
 const char fillStepLabels[fillStepCount][11] = {
-    "Note", "No Note", "Fx", "No Fx", "Random", "Each", "Euclidean",
+    "Note", "No Note", "Fx", "No Fx", "Random", "Each", "Euclidean", "Drums",
 };
 
 const char* ptrfillStepNames[fillStepCount] = {
     &fillStepLabels[0][0], &fillStepLabels[1][0], &fillStepLabels[2][0], &fillStepLabels[3][0],
-    &fillStepLabels[4][0], &fillStepLabels[5][0], &fillStepLabels[6][0],
+    &fillStepLabels[4][0], &fillStepLabels[5][0], &fillStepLabels[6][0], &fillStepLabels[7][0],
 };
 //------------------------------------------------------------
 
@@ -1077,6 +1078,18 @@ void cPatternEditor::refreshFillDensity()
                     Sequencer::MAX_FILL_DENSITY;
             sprintf(
               fillTextDensity, "%d", fillData[fillIdx].density[fillData[fillIdx].fillStep]);
+            break;
+        case Sequencer::fillStepDrums:
+            // 0 = Random, 1.. = the drum patterns; the bar shows the place in the list
+            labelText = "Pattern";
+            {
+                int16_t pattern = fillData[fillIdx].density[fillData[fillIdx].fillStep];
+                value = pattern * 100 / Sequencer::getDrumPatternCount();
+                snprintf(fillTextDensity,
+                         sizeof(fillTextDensity),
+                         "%s",
+                         Sequencer::getDrumPatternName(pattern));
+            }
             break;
         default: break;
     }

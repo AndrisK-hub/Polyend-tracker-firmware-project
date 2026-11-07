@@ -243,6 +243,101 @@ bool Sequencer::isEuclideanStep(uint16_t offset, int16_t density)
     return diff <= 0.5f && diff > -0.5f;
 }
 
+// Fill > Where? > Drums
+// One pattern is one rhythm for one track ('x' = hit, '.' = no hit). It repeats over the
+// selection, starting at the first selected step. Lengths: 8, 16 or 32 steps (16th notes).
+// The first letter of the name tells the role: K kick, S snare/clap, H hat, P percussion.
+// Names have at most 9 characters (the width of the label in the Fill popup).
+namespace
+{
+struct strDrumPattern
+{
+    const char* name;
+    const char* hits;
+};
+
+constexpr strDrumPattern drumPatterns[] = {
+    {"K 4Floor", "x...x...x...x..."},   // four on the floor
+    {"K Rock", "x.......x.x....."},     // 1, 3 and the "and" of 3
+    {"K Basic", "x.......x......."},    // 1 and 3
+    {"K 2Step", "x.........x....."},    // 1 and the "and" of 3 (two-step, half-time feel)
+    {"S Back", "....x.......x..."},     // backbeat: 2 and 4
+    {"S Half", "........x......."},     // half-time: 3 only
+    {"S Dembow", "...x..x....x..x."},   // dembow, 3-3-2 snare
+    {"S Roll", "............xxxx"},     // roll on the last beat
+    {"H 4ths", "x...x...x...x..."},     // quarter notes
+    {"H 8ths", "x.x.x.x.x.x.x.x."},     // eighth notes
+    {"H 16ths", "xxxxxxxxxxxxxxxx"},    // sixteenth notes
+    {"H Offbeat", "..x...x...x...x."},  // offbeat (open hat in house)
+    {"H 16 Off", ".x.x.x.x.x.x.x.x"},   // off-sixteenths
+    {"H Trap", "x.x.x.x.x.x.xxxx"},     // eighths, sixteenth burst on the last beat
+    {"P Bossa", "x..x..x...x..x.."},    // bossa nova clave 3-2
+    {"P Bossa23", "..x..x..x..x..x."},  // bossa nova clave 2-3
+    {"P Son 3-2", "x..x..x...x.x..."},  // son clave 3-2
+    {"P Son 2-3", "..x.x...x..x..x."},  // son clave 2-3
+    {"P Rumba32", "x..x...x..x.x..."},  // rumba clave 3-2
+    {"P Rumba23", "..x.x...x..x...x"},  // rumba clave 2-3
+    {"P Tresill", "x..x..x."},          // tresillo (8 steps)
+    {"P Cinquil", "x.xx.xx."},          // cinquillo (8 steps)
+};
+constexpr int16_t drumPatternsCount = sizeof(drumPatterns) / sizeof(drumPatterns[0]);
+
+constexpr int drumPatternLength(const char* hits)
+{
+    int len = 0;
+    while (hits[len] != 0)
+        len++;
+    return len;
+}
+
+constexpr bool drumPatternsAreValid()
+{
+    for (int i = 0; i < drumPatternsCount; i++)
+    {
+        int nameLen = drumPatternLength(drumPatterns[i].name);
+        int len = drumPatternLength(drumPatterns[i].hits);
+        if (nameLen < 1 || nameLen > 9)
+            return false;
+        if (len != 8 && len != 16 && len != 32)
+            return false;
+        for (int s = 0; s < len; s++)
+        {
+            if (drumPatterns[i].hits[s] != 'x' && drumPatterns[i].hits[s] != '.')
+                return false;
+        }
+    }
+    return true;
+}
+static_assert(drumPatternsAreValid(), "drum pattern table is not valid");
+} // namespace
+
+int16_t Sequencer::getDrumPatternCount()
+{
+    return drumPatternsCount;
+}
+
+const char* Sequencer::getDrumPatternName(int16_t pattern)
+{
+    if (pattern < 1 || pattern > drumPatternsCount)
+        return "Random";
+    return drumPatterns[pattern - 1].name;
+}
+
+int16_t Sequencer::resolveDrumPattern(int16_t pattern)
+{
+    if (pattern < 1)
+        return static_cast<int16_t>(utilMathRandom::random(1, drumPatternsCount + 1));
+    return pattern > drumPatternsCount ? drumPatternsCount : pattern;
+}
+
+bool Sequencer::isDrumPatternHit(int16_t pattern, uint16_t offset)
+{
+    if (pattern < 1 || pattern > drumPatternsCount)
+        return false;
+    const char* hits = drumPatterns[pattern - 1].hits;
+    return hits[offset % drumPatternLength(hits)] == 'x';
+}
+
 bool Sequencer::isStepToFillFx(strPattern::strTrack::strStep* step,
                                uint16_t offset,
                                uint8_t fxIndex,
@@ -271,6 +366,9 @@ bool Sequencer::isStepToFillFx(strPattern::strTrack::strStep* step,
     else if (fillStep == fillStepNote && step->note >= 0)
         return true;
 
+    else if (fillStep == fillStepDrums)
+        return isDrumPatternHit(density, offset);
+
     return false;
 }
 
@@ -294,6 +392,8 @@ bool Sequencer::isStepToFillProp(strPattern::strTrack::strStep* step,
         return true;
     else if (fillStep == fillStepNote && step->note >= 0)
         return true;
+    else if (fillStep == fillStepDrums)
+        return isDrumPatternHit(density, offset);
 
     return false;
 }
@@ -434,6 +534,9 @@ bool Sequencer::isStepToFillNote(strPattern::strTrack::strStep* step,
 
     else if (fillStep == fillStepNote && step->note >= 0)
         return true;
+
+    else if (fillStep == fillStepDrums)
+        return isDrumPatternHit(density, offset);
 
     return false;
 }

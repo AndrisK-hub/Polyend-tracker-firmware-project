@@ -298,7 +298,7 @@ class cPatternEditor : public ModuleBase
     static constexpr int fillTextLen = 10;
     char fillText1[fillTextLen];
     char fillText2[fillTextLen];
-    char fillTextDensity[10];
+    char fillTextDensity[16];
     char fxTypeText[2];
     //
     struct strFill

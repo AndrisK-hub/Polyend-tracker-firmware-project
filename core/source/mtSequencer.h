@@ -60,6 +60,7 @@ class Sequencer
         fillStepRandom,
         fillStepByStep,
         fillStepEuclidean,
+        fillStepDrums,
         fillStepEnd__
     };
     static constexpr int MAX_FILL_DENSITY = 128;
@@ -921,6 +922,14 @@ class Sequencer
     void fillRandomVolume(int16_t fillStep, int16_t fromVal, int16_t toVal, int16_t density);
 
     bool isEuclideanStep(uint16_t offset, int16_t density);
+
+    // Fill > Where? > Drums: the steps of the selection that get a hit follow a drum pattern.
+    // The pattern is chosen with the 'density' value of the rule: 0 = Random (a new pattern on
+    // every fill, see resolveDrumPattern()), 1..getDrumPatternCount() = a pattern of the table.
+    static int16_t getDrumPatternCount();
+    static const char* getDrumPatternName(int16_t pattern); // 0 = "Random"
+    static int16_t resolveDrumPattern(int16_t pattern);     // Random -> a random pattern
+    static bool isDrumPatternHit(int16_t pattern, uint16_t offset);
 
     bool isStepToFillNote(strPattern::strTrack::strStep* step,
                           uint16_t offset,

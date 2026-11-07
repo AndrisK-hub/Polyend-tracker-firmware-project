@@ -1597,8 +1597,16 @@ void cPatternEditor::changeFillData(int16_t value, bool rollListOver)
             break;
         case 5: // density
             ptrVal = &fillData[fillIdx].density[fillData[fillIdx].fillStep];
-            min = 1;
-            max = Sequencer::MAX_FILL_DENSITY;
+            if (fillData[fillIdx].fillStep == Sequencer::fillStepDrums)
+            {
+                min = 0; // Random
+                max = Sequencer::getDrumPatternCount();
+            }
+            else
+            {
+                min = 1;
+                max = Sequencer::MAX_FILL_DENSITY;
+            }
             break;
 
         default: return;
@@ -1709,6 +1717,13 @@ void cPatternEditor::changneFillDataByPad(uint8_t pad)
                 if (fillData[fillIdx].to > max_fx)
                     fillData[fillIdx].to = max_fx;
             }
+            break;
+        }
+        case 5: // density (Drums: the pattern, pad 0 = Random)
+        {
+            if (fillData[fillIdx].fillStep == Sequencer::fillStepDrums &&
+                pad <= Sequencer::getDrumPatternCount())
+                fillData[fillIdx].density[Sequencer::fillStepDrums] = pad;
             break;
         }
         case 4: // param
@@ -3445,6 +3460,10 @@ static void functFillApply()
     {
         newFileManager.storePatternUndoRevision();
         cPatternEditor::strFill* fillData = &PTE->fillData[PTE->getFillDataIdx()];
+        // Drums: 'Random' is resolved once, so the whole fill uses the same pattern
+        int16_t density = fillData->density[fillData->fillStep];
+        if (fillData->fillStep == Sequencer::fillStepDrums)
+            density = Sequencer::resolveDrumPattern(density);
         //(void) PTE->fillData[PTE->editParam];
         //(void) PTE->fillStep;
         // PTE->fillData[x]		<= przechowuje dane do konfiguracji fill
@@ -3468,7 +3487,7 @@ static void functFillApply()
                                               fillData->param,
                                               fillData->from,
                                               fillData->to,
-                                              fillData->density[fillData->fillStep]);
+                                              density);
                 }
                 else if (fillData->type == 1)
                 {
@@ -3476,7 +3495,7 @@ static void functFillApply()
                                               fillData->param,
                                               fillData->from,
                                               fillData->to,
-                                              fillData->density[fillData->fillStep]);
+                                              density);
                 }
                 else if (fillData->type == 0)
                 {
@@ -3484,7 +3503,7 @@ static void functFillApply()
                                               fillData->param,
                                               fillData->from,
                                               fillData->from,
-                                              fillData->density[fillData->fillStep]);
+                                              density);
                 }
 
                 break;
@@ -3494,21 +3513,21 @@ static void functFillApply()
                     sequencer.fillLinearInstruments(fillData->fillStep,
                                                     fillData->from,
                                                     fillData->from,
-                                                    fillData->density[fillData->fillStep]);
+                                                    density);
                 }
                 else if (fillData->type == 1)
                 {
                     sequencer.fillLinearInstruments(fillData->fillStep,
                                                     fillData->from,
                                                     fillData->to,
-                                                    fillData->density[fillData->fillStep]);
+                                                    density);
                 }
                 else if (fillData->type == 2)
                 {
                     sequencer.fillRandomInstruments(fillData->fillStep,
                                                     fillData->from,
                                                     fillData->to,
-                                                    fillData->density[fillData->fillStep]);
+                                                    density);
                 }
 
                 break;
@@ -3525,21 +3544,21 @@ static void functFillApply()
                             sequencer.fillLinearMicromove(fillData->fillStep,
                                                           fillData->from,
                                                           fillData->from,
-                                                          fillData->density[fillData->fillStep]);
+                                                          density);
                         }
                         else if (fillData->type == 1)
                         {
                             sequencer.fillLinearMicromove(fillData->fillStep,
                                                           fillData->from,
                                                           fillData->to,
-                                                          fillData->density[fillData->fillStep]);
+                                                          density);
                         }
                         else if (fillData->type == 2)
                         {
                             sequencer.fillRandomMicromove(fillData->fillStep,
                                                           fillData->from,
                                                           fillData->to,
-                                                          fillData->density[fillData->fillStep]);
+                                                          density);
                         }
                     }
                     else
@@ -3549,21 +3568,21 @@ static void functFillApply()
                             sequencer.fillLinearVolume(fillData->fillStep,
                                                        fillData->from,
                                                        fillData->from,
-                                                       fillData->density[fillData->fillStep]);
+                                                       density);
                         }
                         else if (fillData->type == 1)
                         {
                             sequencer.fillLinearVolume(fillData->fillStep,
                                                        fillData->from,
                                                        fillData->to,
-                                                       fillData->density[fillData->fillStep]);
+                                                       density);
                         }
                         else if (fillData->type == 2)
                         {
                             sequencer.fillRandomVolume(fillData->fillStep,
                                                        fillData->from,
                                                        fillData->to,
-                                                       fillData->density[fillData->fillStep]);
+                                                       density);
                         }
                     }
                     break;
@@ -3578,7 +3597,7 @@ static void functFillApply()
                                            fillData->param,
                                            fillData->from,
                                            fillData->from,
-                                           fillData->density[fillData->fillStep]);
+                                           density);
                 }
                 else if (fillData->type == 1)
                 {
@@ -3587,7 +3606,7 @@ static void functFillApply()
                                            fillData->param,
                                            fillData->from,
                                            fillData->to,
-                                           fillData->density[fillData->fillStep]);
+                                           density);
                 }
                 else if (fillData->type == 2)
                 {
@@ -3596,7 +3615,7 @@ static void functFillApply()
                                            fillData->param,
                                            fillData->from,
                                            fillData->to,
-                                           fillData->density[fillData->fillStep]);
+                                           density);
                 }
 
                 break;
