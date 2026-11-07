@@ -46,6 +46,7 @@ class DisplayDriverImpl : public DisplayDriver
                                uint32_t destMemAddress) override;
     virtual bool updateStreamDma(bool lastFrame) override;
     virtual void stopStreamDma() override;
+    virtual bool isStreamIdle() override { return streamUpdateStep == 0; }
 
     void init(SpiBus* spi);
     static void setUpdateDmaStep(int step) { streamUpdateStep = step; };

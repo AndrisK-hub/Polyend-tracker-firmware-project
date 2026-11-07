@@ -148,6 +148,7 @@ class cDisplay
     void startVideoStream();
     void updateVideoStream(bool lastFrame);
     void stopVideoStream();
+    bool isVideoStreamIdle();
 
     bool showVideoStreamFrame();
     uint16_t* getLineBuffer(int j);

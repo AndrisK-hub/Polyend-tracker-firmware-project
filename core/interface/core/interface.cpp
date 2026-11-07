@@ -21,6 +21,10 @@
 #include "sampleRecorder/sampleRecorder.h"
 #include "songEditor/songEditor.h"
 
+#ifdef TRACKER_MINI
+#include "gameModule.h"
+#endif
+
 #include "fileManager.h"
 #include "mtConfig.h"
 #include "mtPadBoard.h"
@@ -636,6 +640,11 @@ void interfaceEnvents(uint8_t event, void* param1, void* param2, void* param3)
         }
         case eventActivateGameModule:
         {
+#ifdef TRACKER_MINI
+            // param1 = handle to the module that starts the game
+            mtInterface.deactivateModule((hModule)param1);
+            mtInterface.activateModule(&gameModule, 0);
+#endif
             break;
         }
         case eventActivateImageViewer:

@@ -18,7 +18,7 @@
 // clang-format off
 
 #ifdef TRACKER_MINI
-constexpr uint8_t baseMenuGroupCount = 8;
+constexpr uint8_t baseMenuGroupCount = 9;
 constexpr uint8_t projectMenuGroupCount = 10;
 constexpr uint8_t generalMenuGroupCount = 10;
 #elif defined(PLATFORM_IMX)
@@ -41,6 +41,11 @@ cMenuGroup menuBase(menuBase, 0, baseMenuGroupCount);
 
 // grupy glowne
 
+#ifdef TRACKER_MINI
+// first square of the Config screen, so the games are one press away
+cMenuGroup menuGames(menuBase, "Games", 1);
+#endif
+
 cMenuGroup menuProject(menuBase, "Project Settings", projectMenuGroupCount);
 cMenuGroup menuGeneral(menuBase, "General", generalMenuGroupCount);
 cMenuGroup menuMidi(menuBase, "MIDI", 11);
@@ -59,6 +64,16 @@ cMenuGroup menuFunctionButtons(menuBase, "Fn buttons binding", 8);
 cMenuGroup menuCredits(menuBase, "Info", 4);
 
 // elementy/////////
+
+#ifdef TRACKER_MINI
+// games
+const strItemTypeActionButton playGameSetup{ gamesPlayActivate, nullptr };
+cMenuItem melPlayGame(menuGames,
+                      "Play game",
+                      gamesPlayDesc,
+                      menuTypeItemActionButton,
+                      &playGameSetup);
+#endif
 
 // project settings
 const strItemTypeListValues setupPatternDiv{ &mtProject.values.patternDiv, 0, 15, 1, 1 };

@@ -386,6 +386,26 @@ const char firmUpdDesc[] = {
     "polyend.com."
 };
 
+#ifdef TRACKER_MINI
+const char gamesPlayDesc[] = {
+    "Plays NES games\n"
+    "(.nes files) from\n"
+    "the Games/ folder\n"
+    "on your SD card.\n\n"
+
+    "Controls:\n"
+    "Arrows - D-pad\n"
+    "Fn1 - Select\n"
+    "Fn2 - Start\n"
+    "Fn3 - B\n"
+    "Fn4 - A\n"
+    "Middle - Start\n"
+    "Hold Menu - quit\n\n"
+
+    "Beta: no sound yet."
+};
+#endif
+
 const char slaveClockCompDesc[] = { "Allows compensating latency of incoming clock signal by "
                                     "number of clock pulses, where 1 pulse = 1/6 of step. "
                                     "Use this with \"Clock in\" set to MIDI IN jack or USB. " };

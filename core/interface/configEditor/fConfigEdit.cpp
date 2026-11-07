@@ -19,6 +19,10 @@
 #include "mtTest.h"
 #include "patternEditor/patternEditor.h"
 
+#ifdef TRACKER_MINI
+#include "gameModule.h"
+#endif
+
 cConfigEditor configEditor;
 static cConfigEditor* CE = &configEditor;
 
@@ -88,6 +92,15 @@ void cConfigEditor::update()
         // CE->selectConfigList(3);
         newFileManager.clearStatus();
     }
+#ifdef TRACKER_MINI
+    else if (managerStatus == fmBrowseGamesEnd)
+    {
+        char** gamesNames = nullptr;
+        uint8_t gamesCount = newFileManager.getGamesList(&gamesNames);
+        newFileManager.clearStatus();
+        showGamesList(gamesNames, gamesCount);
+    }
+#endif
     else if (managerStatus >= fmError)
     {
         newFileManager.clearStatus();
@@ -433,6 +446,12 @@ static void functActionButton(uint8_t button, uint8_t state)
                         CE->ip->blockAllInputsExcept(interfaceButton6, interfaceButton7);
                         CE->showFirmwareUpdatePopout();
                     }
+#ifdef TRACKER_MINI
+                    else if (CE->flashingState == 2)
+                    {
+                        CE->launchSelectedGame();
+                    }
+#endif
                     else if (CE->itemEditorShown)
                     {
                         CE->itemEditorApply();
@@ -890,6 +909,51 @@ void firmwareUpgradeActivate()
 
     newFileManager.browseFirmwares();
 }
+
+#ifdef TRACKER_MINI
+void gamesPlayActivate()
+{
+    CE->itemEditorOpen(menuTypeItemActionButton, "Play game", gamesPlayDesc, nullptr);
+
+    newFileManager.browseGames();
+}
+
+void cConfigEditor::showGamesList(char** names, uint8_t count)
+{
+    static char noGamesText[] = "No .nes files found";
+    static char* noGamesList[1] = { noGamesText };
+
+    gamesFoundNum = count;
+    flashingState = 2; // the shown list holds games
+    changeLabelText(6, "Cancel");
+
+    if (count == 0)
+    {
+        changeLabelText(7, "");
+        showConfigList4(3, 0, 1, noGamesList);
+    }
+    else
+    {
+        changeLabelText(7, "Play");
+        showConfigList4(3, 0, count, names);
+    }
+}
+
+void cConfigEditor::launchSelectedGame()
+{
+    char** names = nullptr;
+    uint8_t count = newFileManager.getGamesList(&names);
+    if (gamesFoundNum == 0 || selectedConfigListPosition >= count)
+    {
+        return;
+    }
+
+    gameModuleSetFile(names[selectedConfigListPosition]);
+
+    itemEditorClose(); // leave the Config screen tidy for when the game is quit
+    eventFunct(eventActivateGameModule, this, nullptr, nullptr);
+}
+#endif
 
 void cConfigEditor::changeConfigListPosition(int16_t value)
 {

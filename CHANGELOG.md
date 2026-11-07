@@ -44,6 +44,14 @@ All notable changes to the **Polyend Tracker Community Edition (CE)** firmware a
    * `Random` picks a new pattern on every fill (one pattern for the whole selection).
    * No file format change.
 
+5. **Games: NES emulator (Tracker Mini only, beta)**
+   * New `Config` group **Games** (first in the list) with **Play game**. It lists the `.nes` files in the `Games/` folder of the SD card (the folder is created if it is missing). Select one and press `Play`.
+   * Controls: arrows = D-pad, `Fn1` = Select, `Fn2` = Start, `Fn3` = B, `Fn4` = A, middle key = Start. Several directions can be held at once (diagonals). **Hold `Menu`** to quit and return to Config.
+   * The picture is shown 2x in the middle of the screen. While a game runs the sequencer is stopped and the rest of the interface is paused.
+   * The emulator is new and was written for this firmware (6502 CPU with the undocumented opcodes, cycle-timed picture chip with sprite-0 and mid-frame scroll effects, NTSC timing). Boards (iNES mapper numbers): 0, 1, 2, 3, 4, 7, 9, 10, 11, 33, 34, 48, 66, 71, 79, 87, 118, 119, 140, 180, 206. These include NROM, MMC1, UxROM, CNROM, MMC3 (with its scanline IRQ), AxROM, MMC2/MMC4 and most of the common smaller boards. iNES and NES 2.0 headers are read.
+   * **This is a first test build.** It has not been run on a real Tracker Mini yet. **There is no sound** (the sound chip is not emulated yet), no saving of battery RAM, and boards that are not in the list above (for example MMC5, VRC2/4/6/7, FME-7, Namco 163) are refused with a message. A game that uses an unsupported board, or is larger than about 700 KB, shows the reason instead of starting.
+   * The game runs in the 768 KB scratch memory that is otherwise used for previews and the Sample Editor, so it uses no memory when you are not playing. Pattern and project data are not touched.
+
 ### Fixed
 
 1. **`Gate length` FX is no longer ignored on steps that also have `Micro-move`.** The gate length is now carried along with the step until the delayed note actually starts. Patterns that combine both on one step will now play their gate; before, the note kept ringing.

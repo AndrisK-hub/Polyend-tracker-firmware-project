@@ -130,6 +130,13 @@ class cConfigEditor : public ModuleBase
     char** ptrfirmwareNamesList;
 
     void showFirmwareUpdatePopout();
+
+#ifdef TRACKER_MINI
+    // Games square: lists the .nes files and starts the selected one
+    void showGamesList(char** names, uint8_t count);
+    void launchSelectedGame();
+    uint8_t gamesFoundNum = 0;
+#endif
     void updateFirmware(bool yes);
 
     void hidePopout();
@@ -244,6 +251,9 @@ extern cConfigEditor configEditor;
 //===========================================================================
 
 void firmwareUpgradeActivate();
+#ifdef TRACKER_MINI
+void gamesPlayActivate();
+#endif
 void firmwareUpgradeDeactivate();
 
 #endif /* INTERFACE_CONFIGEDITOR_H_ */

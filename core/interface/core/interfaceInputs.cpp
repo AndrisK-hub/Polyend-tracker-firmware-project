@@ -14,6 +14,15 @@ static inline bool isNavButton(uint8_t b)
     return b == interfaceButtonMiniMiddle || b == interfaceButtonUp || b == interfaceButtonDown ||
            b == interfaceButtonLeft || b == interfaceButtonRight;
 }
+
+// The lock above keeps menus calm, but a game needs several directions at once (diagonals).
+static bool navButtonLockEnabled = true;
+
+void setMiniNavButtonLock(bool enabled)
+{
+    navButtonLockEnabled = enabled;
+    activeNavButton = 0;
+}
 #endif
 
 //=======================================================================
@@ -26,7 +35,7 @@ void Interface::potChange(uint8_t n, int16_t value)
 void Interface::buttonChange(uint8_t n, uint8_t value)
 {
 #ifdef TRACKER_MINI
-    if (isNavButton(n))
+    if (navButtonLockEnabled && isNavButton(n))
     {
         // If another nav button is locked, ignore this event until it releases.
         if (activeNavButton != 0 && n != activeNavButton)

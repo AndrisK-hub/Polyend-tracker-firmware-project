@@ -461,22 +461,25 @@ void cFileManager::browseGamesLocation()
               projectsList + gamesfoundCount,
               [](char* a, char* b) { return compareStrings(a, b); });
 
-    char lowCase[50];
+    // long file names are common for ROM sets, so the buffer must hold a full FAT long name
+    char lowCase[256];
     // usuwanie koncówek .nes
     for (uint8_t i = 0; i < gamesfoundCount; i++)
     {
-        strcpy(lowCase, projectsList[i]);
-        for (uint16_t a = 0; a < 50; a++)
+        strncpy(lowCase, projectsList[i], sizeof(lowCase) - 1);
+        lowCase[sizeof(lowCase) - 1] = 0;
+        for (uint16_t a = 0; a < sizeof(lowCase); a++)
         {
             lowCase[a] = tolower(lowCase[a]);
             if (lowCase[a] == 0)
                 break;
         }
 
-        char* nes = strstr(lowCase, ".nes\0");
-        if (nes != nullptr)
+        // only a real extension is removed (the name may contain ".nes" elsewhere)
+        size_t nameLen = strlen(lowCase);
+        if (nameLen >= 4 && strcmp(lowCase + nameLen - 4, ".nes") == 0)
         {
-            *(projectsList[i] + (nes - lowCase)) = 0;
+            *(projectsList[i] + nameLen - 4) = 0;
         }
     }
 

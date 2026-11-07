@@ -38,6 +38,11 @@ void cDisplay::stopVideoStream()
     displayDriver->stopStreamDma();
 }
 
+bool cDisplay::isVideoStreamIdle()
+{
+    return displayDriver->isStreamIdle();
+}
+
 void cDisplay::updateVideoStream(bool lastFrame)
 {
 #if FPS_METER

@@ -35,6 +35,8 @@ class DisplayDriver
                                uint32_t destMemAddress) = 0;
     virtual bool updateStreamDma(bool lastFrame) = 0;
     virtual void stopStreamDma() = 0;
+    // True when no stream transfer is running, so the stream buffer may be rewritten safely.
+    virtual bool isStreamIdle() { return true; }
 
   protected:
     void startCoProList()
