@@ -155,7 +155,7 @@ void cFileManager::savePatternToWorkspace()
     snprintf(
       patternToSave, PATCH_SIZE, cWorkspacePatternFileFormat, mtProject.values.actualPattern);
 
-    uint8_t saveStatus = fileTransfer.saveMemoryToFile(
+    uint8_t saveStatus = fileTransfer.saveMemoryToFileWhole(
       (uint8_t*)&fileManagerPatternBuffer, patternToSave, sizeof(Sequencer::strPattern));
 
     if (saveStatus == fileTransferEnd)

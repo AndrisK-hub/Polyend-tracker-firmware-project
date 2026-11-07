@@ -18,6 +18,10 @@
 __NOINIT(EXTERNAL_RAM)
 static strRecentFile externalRamRecentProjectsList;
 
+// saveProjectFileToWorkspace() makes a single saveMemoryToFile() call, which writes one chunk
+static_assert(sizeof(strProjectFile) <= READ_WRITE_BUFOR_SIZE,
+              "project file does not fit in one file transfer chunk");
+
 //------------------------------------------------------------------------------------------------------------------
 //-----------------------------------------     SAVE
 //-----------------------------------------------------------

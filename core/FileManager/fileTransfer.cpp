@@ -795,6 +795,28 @@ uint8_t cFileTransfer::saveMemoryToFile(uint8_t* memory, const char* file, uint3
     return fileTransferError;
 }
 
+uint8_t cFileTransfer::saveMemoryToFileWhole(uint8_t* memory, const char* file, uint32_t memSize)
+{
+    // every call writes one chunk, so a transfer that works finishes within this many calls
+    uint32_t callsLeft = memSize / READ_WRITE_BUFOR_SIZE + 2;
+    uint8_t status = fileTransferInProgress;
+
+    while (status == fileTransferInProgress && callsLeft > 0)
+    {
+        status = saveMemoryToFile(memory, file, memSize);
+        callsLeft--;
+    }
+
+    if (status == fileTransferInProgress)
+    {
+        // do not leave a half-written transfer (and an open file) behind for the next save
+        endTransfer();
+        status = fileTransferError;
+    }
+
+    return status;
+}
+
 void cFileTransfer::endTransfer()
 {
     transferStep = 0;

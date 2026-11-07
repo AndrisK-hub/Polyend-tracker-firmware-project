@@ -37,6 +37,8 @@ All notable changes to the **Polyend Tracker Community Edition (CE)** firmware a
 
 1. **`Gate length` FX is no longer ignored on steps that also have `Micro-move`.** The gate length is now carried along with the step until the delayed note actually starts. Patterns that combine both on one step will now play their gate; before, the note kept ringing.
 
+2. **Patterns of 512 steps were not saved completely (Tracker Mini).** A pattern file is about 64 KB, but a file is written in chunks of at most 32 KB and the pattern save made only one call, so the rest was never written and the interrupted write stayed open. The next file written (for example `project.mt` when creating a new project) could then be lost, which showed up as a freeze on *Create new project* and a hang on *Opening last project* at the next start. Pattern saves now write the whole file before they return (`saveMemoryToFileWhole`). Affects the builds with 512-step patterns only; **patterns saved by those builds may be incomplete**, so check them or restore them from a backup of `Projects/`.
+
 ---
 
 ## [1.0.0] - Initial Community Edition Release
