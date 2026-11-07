@@ -934,6 +934,9 @@ class Sequencer
     static int16_t resolveDrumPattern(int16_t pattern);     // Random -> a random pattern
     static int16_t makeDrumRule(int16_t pattern, uint8_t lane); // the value for isStepToFill*()
     static bool isDrumPatternHit(int16_t rule, uint16_t offset);
+    // how many places after the first instrument a hit of this rule takes: the lane of a beat,
+    // 0 for a single rhythm (every track gets the same instrument) and for a bad rule
+    static int16_t drumRuleInstrumentStep(int16_t rule);
 
     bool isStepToFillNote(strPattern::strTrack::strStep* step,
                           uint16_t offset,

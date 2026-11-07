@@ -37,6 +37,17 @@ static inline int16_t fillRuleForTrack(int16_t fillStep,
              : density;
 }
 
+// How far the instrument of a new note moves from the last used one. A drum beat uses one
+// instrument per lane, in the order of the instrument list (kick on the last used instrument, the
+// snare on the next one, ...), so a kit loaded in that order plays right away. Only sample tracks
+// do this: a MIDI track has one instrument per channel and keeps the last used one.
+static inline int16_t fillInstrumentStep(int16_t fillStep, int16_t rule, uint8_t track)
+{
+    return fillStep == Sequencer::fillStepDrums && isSampleTrack(track)
+             ? Sequencer::drumRuleInstrumentStep(rule)
+             : 0;
+}
+
 void Sequencer::fillRandomNotes(int16_t fillStep,
                                 int16_t scale,
                                 int16_t from,
@@ -54,6 +65,7 @@ void Sequencer::fillRandomNotes(int16_t fillStep,
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
         const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
+        const int16_t instrumentStep = fillInstrumentStep(fillStep, rule, t);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             step = &currentPattern->track[t].step[s];
@@ -62,7 +74,7 @@ void Sequencer::fillRandomNotes(int16_t fillStep,
                 if (step->note == STEP_NOTE_EMPTY)
                 {
                     step->instrument = changeInstrumentInSpecificOrder(
-                      mtProject.values.lastUsedInstrument, 0, !isSampleTrack(t));
+                      mtProject.values.lastUsedInstrument, instrumentStep, !isSampleTrack(t));
                 }
                 for (uint8_t a = 0; a <= 100; a -= -1)
                 {
@@ -90,6 +102,7 @@ void Sequencer::fillLinearNotes(int16_t fillStep,
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
         const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
+        const int16_t instrumentStep = fillInstrumentStep(fillStep, rule, t);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             step = &currentPattern->track[t].step[s];
@@ -111,7 +124,7 @@ void Sequencer::fillLinearNotes(int16_t fillStep,
                     if (step->isNoteEmpty())
                     {
                         step->instrument = changeInstrumentInSpecificOrder(
-                          mtProject.values.lastUsedInstrument, 0, !isSampleTrack(t));
+                          mtProject.values.lastUsedInstrument, instrumentStep, !isSampleTrack(t));
                     }
                     step->note = newNote;
                 }
@@ -497,6 +510,16 @@ bool Sequencer::isDrumPatternHit(int16_t rule, uint16_t offset)
     if (hits == nullptr)
         return false;
     return hits[offset % drumPatternLength(hits)] == 'x';
+}
+
+int16_t Sequencer::drumRuleInstrumentStep(int16_t rule)
+{
+    int16_t pattern = rule & 0xFF;
+    if (rule < 0 || pattern < 1 || pattern > drumPatternsCount)
+        return 0;
+    if (drumPatterns[pattern - 1].lanes[1] == nullptr)
+        return 0; // a single rhythm
+    return static_cast<int16_t>((rule >> 8) & 0x07);
 }
 
 bool Sequencer::isStepToFillFx(strPattern::strTrack::strStep* step,
