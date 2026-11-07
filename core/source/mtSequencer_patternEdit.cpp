@@ -25,6 +25,18 @@ void fromToSwap(int16_t& from, int16_t& to)
     }
 }
 
+// The value the step rules get for one track. For Drums it holds the pattern and the lane (the
+// place of the track inside the selection); the other rules take 'density' as it is.
+static inline int16_t fillRuleForTrack(int16_t fillStep,
+                                       int16_t density,
+                                       uint8_t track,
+                                       uint8_t firstTrack)
+{
+    return fillStep == Sequencer::fillStepDrums
+             ? Sequencer::makeDrumRule(density, static_cast<uint8_t>(track - firstTrack))
+             : density;
+}
+
 void Sequencer::fillRandomNotes(int16_t fillStep,
                                 int16_t scale,
                                 int16_t from,
@@ -41,10 +53,11 @@ void Sequencer::fillRandomNotes(int16_t fillStep,
 
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
+        const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             step = &currentPattern->track[t].step[s];
-            if (isStepToFillNote(step, offset, fillStep, density))
+            if (isStepToFillNote(step, offset, fillStep, rule))
             {
                 if (step->note == STEP_NOTE_EMPTY)
                 {
@@ -76,10 +89,11 @@ void Sequencer::fillLinearNotes(int16_t fillStep,
 
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
+        const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             step = &currentPattern->track[t].step[s];
-            if (isStepToFillNote(step, offset, fillStep, density))
+            if (isStepToFillNote(step, offset, fillStep, rule))
             {
                 int newNote = round(mapClamped<float>(
                   (float)offset + sel->firstStep, sel->firstStep, sel->lastStep, from, to));
@@ -115,10 +129,11 @@ void Sequencer::fillLinearInstruments(int16_t fillStep, int16_t from, int16_t to
 
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
+        const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             step = &currentPattern->track[t].step[s];
-            if (isStepToFillNote(step, offset, fillStep, density))
+            if (isStepToFillNote(step, offset, fillStep, rule))
             {
                 int newInstrument =
                   mapClamped<int>(offset + sel->firstStep, sel->firstStep, sel->lastStep, from, to);
@@ -157,11 +172,12 @@ void Sequencer::fillLinearFx(int16_t fxIndex,
 
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
+        const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             step = &currentPattern->track[t].step[s];
 
-            if (isStepToFillFx(step, offset, fxIndex, fillStep, density))
+            if (isStepToFillFx(step, offset, fxIndex, fillStep, rule))
             {
                 step->fx[fxIndex].type = (fxType >= 0) ? fxType : generateRandomFx();
 
@@ -217,11 +233,12 @@ void Sequencer::fillRandomFx(int16_t fxIndex,
 
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
+        const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             step = &currentPattern->track[t].step[s];
 
-            if (isStepToFillFx(step, offset, fxIndex, fillStep, density))
+            if (isStepToFillFx(step, offset, fxIndex, fillStep, rule))
             {
                 step->fx[fxIndex].value = utilMathRandom::random(fromVal, toVal + 1);
                 step->fx[fxIndex].type = (fxType >= 0) ? fxType : generateRandomFx();
@@ -244,43 +261,110 @@ bool Sequencer::isEuclideanStep(uint16_t offset, int16_t density)
 }
 
 // Fill > Where? > Drums
-// One pattern is one rhythm for one track ('x' = hit, '.' = no hit). It repeats over the
-// selection, starting at the first selected step. Lengths: 8, 16 or 32 steps (16th notes).
-// The first letter of the name tells the role: K kick, S snare/clap, H hat, P percussion.
+// A drum pattern has up to 8 lanes. A lane is a rhythm for one track of 8, 16 or 32 steps (16th
+// notes; 'x' = hit, '.' = no hit). It repeats over the selection, starting at the first selected
+// step. A pattern with one lane (names start with K kick, S snare, H hat, P percussion) gives
+// that rhythm to every selected track. A pattern with more lanes (a beat, names start with B)
+// gives lane 0 to the first selected track, lane 1 to the next one and so on; tracks after the
+// last lane are left alone. The lanes of the beats are in this order: kick, snare/clap, closed
+// hat, open hat, percussion A, percussion B.
 // Names have at most 9 characters (the width of the label in the Fill popup).
 namespace
 {
+constexpr int kDrumLanes = 8;
+
 struct strDrumPattern
 {
     const char* name;
-    const char* hits;
+    const char* lanes[kDrumLanes]; // the unused lanes are nullptr
 };
 
 constexpr strDrumPattern drumPatterns[] = {
-    {"K 4Floor", "x...x...x...x..."},   // four on the floor
-    {"K Rock", "x.......x.x....."},     // 1, 3 and the "and" of 3
-    {"K Basic", "x.......x......."},    // 1 and 3
-    {"K 2Step", "x.........x....."},    // 1 and the "and" of 3 (two-step, half-time feel)
-    {"S Back", "....x.......x..."},     // backbeat: 2 and 4
-    {"S Half", "........x......."},     // half-time: 3 only
-    {"S Dembow", "...x..x....x..x."},   // dembow, 3-3-2 snare
-    {"S Roll", "............xxxx"},     // roll on the last beat
-    {"H 4ths", "x...x...x...x..."},     // quarter notes
-    {"H 8ths", "x.x.x.x.x.x.x.x."},     // eighth notes
-    {"H 16ths", "xxxxxxxxxxxxxxxx"},    // sixteenth notes
-    {"H Offbeat", "..x...x...x...x."},  // offbeat (open hat in house)
-    {"H 16 Off", ".x.x.x.x.x.x.x.x"},   // off-sixteenths
-    {"H Trap", "x.x.x.x.x.x.xxxx"},     // eighths, sixteenth burst on the last beat
-    {"P Bossa", "x..x..x...x..x.."},    // bossa nova clave 3-2
-    {"P Bossa23", "..x..x..x..x..x."},  // bossa nova clave 2-3
-    {"P Son 3-2", "x..x..x...x.x..."},  // son clave 3-2
-    {"P Son 2-3", "..x.x...x..x..x."},  // son clave 2-3
-    {"P Rumba32", "x..x...x..x.x..."},  // rumba clave 3-2
-    {"P Rumba23", "..x.x...x..x...x"},  // rumba clave 2-3
-    {"P Tresill", "x..x..x."},          // tresillo (8 steps)
-    {"P Cinquil", "x.xx.xx."},          // cinquillo (8 steps)
+    // beats: kick, snare/clap, closed hat, open hat, percussion A, percussion B
+    // four on the floor, clap, off-sixteenth hats, open hat on the offbeat
+    {"B House",
+     {"x...x...x...x...", "....x.......x...", ".x.x.x.x.x.x.x.x", "..x...x...x...x."}},
+    // four on the floor, sixteenth hats, open hat on the offbeat
+    {"B Techno",
+     {"x...x...x...x...", "....x.......x...", "xxxxxxxxxxxxxxxx", "..x...x...x...x."}},
+    // hip-hop boom bap
+    {"B BoomBap",
+     {"x.....x...x.....", "....x.......x...", "x.x.x.x.x.x.x.x."}},
+    // lo-fi hip-hop
+    {"B LoFi",
+     {"x....x....x.....", "....x.......x...", "x...x...x...x..."}},
+    // trap, half-time snare
+    {"B Trap",
+     {"x......x..x.....", "........x.......", "xxxxxxxxxxxxxxxx"}},
+    // trap, double-time snare
+    {"B Trap2x",
+     {"x......x..x.....", "....x.......x...", "xxxxxxxxxxxxxxxx"}},
+    // drill
+    {"B Drill",
+     {"x..x.....x......", "....x.......x...", "x.x.x.x.x.x.x.x."}},
+    // UK drill, snare on 3
+    {"B UKDrill",
+     {"x..x.....x......", "........x.......", "x.x.x.x.x.x.x.x."}},
+    // UK garage / drum and bass two-step
+    {"B 2Step",
+     {"x.........x.....", "....x.......x...", "x.x.x.x.x.x.x.x.", "..x...x...x...x."}},
+    // reggaeton / dancehall dembow
+    {"B Dembow",
+     {"x...x...x...x...", "...x..x....x..x.", "x.x.x.x.x.x.x.x."}},
+    // reggae one drop
+    {"B OneDrop",
+     {"........x.......", "........x.......", "x.x.x.x.x.x.x.x."}},
+    // reggae rockers
+    {"B Rockers",
+     {"x.......x.......", "........x.......", "x.x.x.x.x.x.x.x."}},
+    // reggae steppers
+    {"B Stepper",
+     {"x...x...x...x...", "........x.......", "x.x.x.x.x.x.x.x."}},
+    // basic rock
+    {"B Rock",
+     {"x.......x.......", "....x.......x...", "x.x.x.x.x.x.x.x."}},
+    // rock with a kick on the and of 3
+    {"B Rock2",
+     {"x.......x.x.....", "....x.......x...", "x.x.x.x.x.x.x.x."}},
+    // half-time
+    {"B Half",
+     {"x.........x.....", "........x.......", "x.x.x.x.x.x.x.x."}},
+    // single rhythms: every selected track gets the same one
+    {"K 4Floor", {"x...x...x...x..."}},  // four on the floor
+    {"K Rock", {"x.......x.x....."}},  // 1, 3 and the "and" of 3
+    {"K Basic", {"x.......x......."}},  // 1 and 3
+    {"K 2Step", {"x.........x....."}},  // 1 and the "and" of 3 (two-step)
+    {"K BoomBap", {"x.....x...x....."}},  // boom bap
+    {"K LoFi", {"x....x....x....."}},  // lo-fi
+    {"K Trap", {"x......x..x....."}},  // trap
+    {"K Drill", {"x..x.....x......"}},  // drill
+    {"K Drop", {"........x......."}},  // one drop
+    {"S Back", {"....x.......x..."}},  // backbeat: 2 and 4
+    {"S Half", {"........x......."}},  // half-time: 3 only
+    {"S Dembow", {"...x..x....x..x."}},  // dembow, 3-3-2
+    {"S Roll", {"............xxxx"}},  // roll on the last beat
+    {"S Roll8", {"........xxxxxxxx"}},  // roll on the last half bar
+    {"H 4ths", {"x...x...x...x..."}},  // quarter notes
+    {"H 8ths", {"x.x.x.x.x.x.x.x."}},  // eighth notes
+    {"H 16ths", {"xxxxxxxxxxxxxxxx"}},  // sixteenth notes
+    {"H Offbeat", {"..x...x...x...x."}},  // offbeat (open hat in house)
+    {"H 16 Off", {".x.x.x.x.x.x.x.x"}},  // off-sixteenths
+    {"H Trap", {"x.x.x.x.x.x.xxxx"}},  // eighths, sixteenth burst on the last beat
+    {"P Bossa", {"x..x..x...x..x.."}},  // bossa nova clave 3-2
+    {"P Bossa23", {"..x..x..x..x..x."}},  // bossa nova clave 2-3
+    {"P Son 3-2", {"x..x..x...x.x..."}},  // son clave 3-2
+    {"P Son 2-3", {"..x.x...x..x..x."}},  // son clave 2-3
+    {"P Rumba32", {"x..x...x..x.x..."}},  // rumba clave 3-2
+    {"P Rumba23", {"..x.x...x..x...x"}},  // rumba clave 2-3
+    {"P Shiko", {"x...x.x...x.x..."}},  // shiko
+    {"P Soukous", {"x..x..x...xx...."}},  // soukous
+    {"P Gahu", {"x..x..x...x...x."}},  // gahu
+    {"P Tresill", {"x..x..x."}},  // tresillo (8 steps)
+    {"P Cinquil", {"x.xx.xx."}},  // cinquillo (8 steps)
+    {"P Habana", {"x..xx.x."}},  // habanera (8 steps)
 };
 constexpr int16_t drumPatternsCount = sizeof(drumPatterns) / sizeof(drumPatterns[0]);
+static_assert(drumPatternsCount < 256, "a pattern number has to fit in 8 bits");
 
 constexpr int drumPatternLength(const char* hits)
 {
@@ -290,20 +374,40 @@ constexpr int drumPatternLength(const char* hits)
     return len;
 }
 
+constexpr int drumPatternLanes(const strDrumPattern& pattern)
+{
+    int lanes = 0;
+    while (lanes < kDrumLanes && pattern.lanes[lanes] != nullptr)
+        lanes++;
+    return lanes;
+}
+
 constexpr bool drumPatternsAreValid()
 {
     for (int i = 0; i < drumPatternsCount; i++)
     {
         int nameLen = drumPatternLength(drumPatterns[i].name);
-        int len = drumPatternLength(drumPatterns[i].hits);
         if (nameLen < 1 || nameLen > 9)
             return false;
-        if (len != 8 && len != 16 && len != 32)
+        int lanes = drumPatternLanes(drumPatterns[i]);
+        if (lanes < 1)
             return false;
-        for (int s = 0; s < len; s++)
+        for (int l = lanes; l < kDrumLanes; l++) // no gap between the lanes
         {
-            if (drumPatterns[i].hits[s] != 'x' && drumPatterns[i].hits[s] != '.')
+            if (drumPatterns[i].lanes[l] != nullptr)
                 return false;
+        }
+        for (int l = 0; l < lanes; l++)
+        {
+            const char* hits = drumPatterns[i].lanes[l];
+            int len = drumPatternLength(hits);
+            if (len != 8 && len != 16 && len != 32)
+                return false;
+            for (int s = 0; s < len; s++)
+            {
+                if (hits[s] != 'x' && hits[s] != '.')
+                    return false;
+            }
         }
     }
     return true;
@@ -323,6 +427,13 @@ const char* Sequencer::getDrumPatternName(int16_t pattern)
     return drumPatterns[pattern - 1].name;
 }
 
+int16_t Sequencer::getDrumPatternLanes(int16_t pattern)
+{
+    if (pattern < 1 || pattern > drumPatternsCount)
+        return 0;
+    return static_cast<int16_t>(drumPatternLanes(drumPatterns[pattern - 1]));
+}
+
 int16_t Sequencer::resolveDrumPattern(int16_t pattern)
 {
     if (pattern < 1)
@@ -330,11 +441,24 @@ int16_t Sequencer::resolveDrumPattern(int16_t pattern)
     return pattern > drumPatternsCount ? drumPatternsCount : pattern;
 }
 
-bool Sequencer::isDrumPatternHit(int16_t pattern, uint16_t offset)
+int16_t Sequencer::makeDrumRule(int16_t pattern, uint8_t lane)
 {
-    if (pattern < 1 || pattern > drumPatternsCount)
+    if (pattern < 1)
+        pattern = 0;
+    return static_cast<int16_t>((pattern & 0xFF) | ((lane & 0x07) << 8));
+}
+
+bool Sequencer::isDrumPatternHit(int16_t rule, uint16_t offset)
+{
+    int16_t pattern = rule & 0xFF;
+    int lane = (rule >> 8) & 0x07;
+    if (rule < 0 || pattern < 1 || pattern > drumPatternsCount)
         return false;
-    const char* hits = drumPatterns[pattern - 1].hits;
+    const strDrumPattern& drums = drumPatterns[pattern - 1];
+    // one lane: every track gets it; more lanes: the track's lane, none after the last one
+    const char* hits = drums.lanes[1] == nullptr ? drums.lanes[0] : drums.lanes[lane];
+    if (hits == nullptr)
+        return false;
     return hits[offset % drumPatternLength(hits)] == 'x';
 }
 
@@ -409,10 +533,11 @@ void Sequencer::fillLinearMicromove(int16_t fillStep,
 
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
+        const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
-            if (isStepToFillProp(step, offset, step->micromove >= 0, fillStep, density))
+            if (isStepToFillProp(step, offset, step->micromove >= 0, fillStep, rule))
             {
                 float tempFloat = fromVal;
                 if (sel->firstStep != sel->lastStep)
@@ -442,10 +567,11 @@ void Sequencer::fillRandomMicromove(int16_t fillStep,
 
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
+        const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
-            if (isStepToFillProp(step, offset, step->micromove >= 0, fillStep, density))
+            if (isStepToFillProp(step, offset, step->micromove >= 0, fillStep, rule))
             {
                 step->micromove = clamp<int>(utilMathRandom::random(fromVal, toVal + 1), 0, 100);
             }
@@ -464,10 +590,11 @@ void Sequencer::fillLinearVolume(int16_t fillStep,
 
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
+        const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
-            if (isStepToFillProp(step, offset, step->volume >= 0, fillStep, density))
+            if (isStepToFillProp(step, offset, step->volume >= 0, fillStep, rule))
             {
                 float tempFloat = fromVal;
                 if (sel->firstStep != sel->lastStep)
@@ -497,10 +624,11 @@ void Sequencer::fillRandomVolume(int16_t fillStep,
 
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
+        const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
-            if (isStepToFillProp(step, offset, step->volume >= 0, fillStep, density))
+            if (isStepToFillProp(step, offset, step->volume >= 0, fillStep, rule))
             {
                 step->volume = clamp<int>(utilMathRandom::random(fromVal, toVal + 1), 0, 100);
             }
@@ -552,11 +680,12 @@ void Sequencer::fillRandomInstruments(int16_t fillStep, int16_t from, int16_t to
 
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
+        const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             step = &currentPattern->track[t].step[s];
 
-            if (isStepToFillNote(step, offset, fillStep, density))
+            if (isStepToFillNote(step, offset, fillStep, rule))
             {
                 int newInstrument = utilMathRandom::random(from, to + 1);
                 step->instrument =

@@ -926,10 +926,14 @@ class Sequencer
     // Fill > Where? > Drums: the steps of the selection that get a hit follow a drum pattern.
     // The pattern is chosen with the 'density' value of the rule: 0 = Random (a new pattern on
     // every fill, see resolveDrumPattern()), 1..getDrumPatternCount() = a pattern of the table.
+    // A beat has several lanes: the track gets the lane that matches its place in the selection
+    // (see makeDrumRule()); a pattern with one lane gives it to every track.
     static int16_t getDrumPatternCount();
     static const char* getDrumPatternName(int16_t pattern); // 0 = "Random"
+    static int16_t getDrumPatternLanes(int16_t pattern);    // 0 for Random / a bad number
     static int16_t resolveDrumPattern(int16_t pattern);     // Random -> a random pattern
-    static bool isDrumPatternHit(int16_t pattern, uint16_t offset);
+    static int16_t makeDrumRule(int16_t pattern, uint8_t lane); // the value for isStepToFill*()
+    static bool isDrumPatternHit(int16_t rule, uint16_t offset);
 
     bool isStepToFillNote(strPattern::strTrack::strStep* step,
                           uint16_t offset,
