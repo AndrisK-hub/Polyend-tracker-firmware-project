@@ -9,6 +9,7 @@
 #include "mtAudioEngine.h"
 #include "mtSequencer.h"
 #include "mtStructs.h"
+#include "Tracker.h"
 #include "sampleRecorder/sampleRecorder.h"
 
 #include "configEditor/configEditor.h"
@@ -2651,9 +2652,23 @@ bool Sequencer::writeRecordedNoteLength(uint8_t track)
 {
     assert(track < kAllTracks);
 
+    return writeNoteLength(track,
+                           player.track[track].recNoteOnStepIdx,
+                           player.track[track].recNoteTicks,
+                           player.track[track].recNoteStartDelay);
+}
+
+// noteStepIdx: the step the note was recorded into, heldTicks: how long it was held in microsteps,
+// startDelay: playback delay of that step in microsteps (micromove, MIDI offset)
+bool Sequencer::writeNoteLength(uint8_t track,
+                                uint16_t noteStepIdx,
+                                uint32_t heldTicksRaw,
+                                uint8_t startDelay)
+{
+    assert(track < kAllTracks);
+
     strPattern::strTrack& patternTrack = currentPattern->track[track];
     const int stepsInPattern = currentPattern->track[0].length + 1;
-    const int noteStepIdx = player.track[track].recNoteOnStepIdx;
     strPattern::strTrack::strStep* noteStep = &patternTrack.step[noteStepIdx];
 
     // the step we recorded the note into has been changed in the meantime
@@ -2662,17 +2677,32 @@ bool Sequencer::writeRecordedNoteLength(uint8_t track)
         return false;
     }
 
-    const int heldTicks = std::max<int>(player.track[track].recNoteTicks, 1);
+    // far beyond any pattern length, so that the int arithmetic below can not overflow
+    const int heldTicks =
+      std::max<int>(static_cast<int>(std::min<uint32_t>(heldTicksRaw, 1000000U)), 1);
+
+    // A step that is entered again (edit mode) may still carry the Gate of an earlier take. It is
+    // reused, or removed when the new take is longer than a step, so that old and new never mix.
+    int gateSlot = -1;
+
+    if (noteStep->fx[0].type == fx.FX_TYPE_GATE_LENGTH)
+    {
+        gateSlot = 0;
+    }
+    else if (noteStep->fx[1].type == fx.FX_TYPE_GATE_LENGTH)
+    {
+        gateSlot = 1;
+    }
 
     if (heldTicks < kRecMicrostepsPerStep)
     {
-        int slot = -1;
+        int slot = gateSlot;
 
-        if (noteStep->fx[0].type == fx.FX_TYPE_NONE)
+        if (slot < 0 && noteStep->fx[0].type == fx.FX_TYPE_NONE)
         {
             slot = 0;
         }
-        else if (noteStep->fx[1].type == fx.FX_TYPE_NONE)
+        else if (slot < 0 && noteStep->fx[1].type == fx.FX_TYPE_NONE)
         {
             slot = 1;
         }
@@ -2687,14 +2717,19 @@ bool Sequencer::writeRecordedNoteLength(uint8_t track)
         return true;
     }
 
+    if (gateSlot >= 0)
+    {
+        noteStep->fx[gateSlot].type = static_cast<uint8_t>(fx.FX_TYPE_NONE);
+        noteStep->fx[gateSlot].value = 0;
+    }
+
     // held through the whole pattern (or longer): it rings until the pattern comes around again
     if (heldTicks >= stepsInPattern * kRecMicrostepsPerStep)
     {
-        return false;
+        return gateSlot >= 0;
     }
 
-    const int endTick =
-      noteStepIdx * kRecMicrostepsPerStep + player.track[track].recNoteStartDelay + heldTicks;
+    const int endTick = noteStepIdx * kRecMicrostepsPerStep + startDelay + heldTicks;
     const int endStepIdx = (endTick / kRecMicrostepsPerStep) % stepsInPattern;
     const int endDelay = endTick % kRecMicrostepsPerStep;
 
@@ -2714,6 +2749,130 @@ bool Sequencer::writeRecordedNoteLength(uint8_t track)
     }
 
     return true;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Note length when entering notes in edit mode
+// ---------------------------------------------------------------------------------------------
+
+bool Sequencer::isEditNoteLengthActive()
+{
+    return mtConfig.general.recNoteLength == recNoteLength_on && !player.performanceMode;
+}
+
+void Sequencer::beginEditNoteLength(uint8_t track, uint16_t step, int16_t source)
+{
+    if (!isEditNoteLengthActive() || track >= kAllTracks || step >= kPatternMaxSteps)
+    {
+        return;
+    }
+
+    const int8_t note = currentPattern->track[track].step[step].note;
+    if (note < 0)
+    {
+        return;
+    }
+
+    const uint32_t nowUs = Tracker::getInstance()->getPlatform()->getTimer()->micros();
+
+    // the same key again, else a free slot, else the one that has been waiting the longest (its
+    // key was probably released while another screen was open)
+    strEditNoteHold* slot = nullptr;
+    for (strEditNoteHold& hold : editNoteHold)
+    {
+        if (hold.active && hold.source == source)
+        {
+            slot = &hold;
+            break;
+        }
+    }
+    if (slot == nullptr)
+    {
+        for (strEditNoteHold& hold : editNoteHold)
+        {
+            if (!hold.active)
+            {
+                slot = &hold;
+                break;
+            }
+        }
+    }
+    if (slot == nullptr)
+    {
+        slot = &editNoteHold[0];
+        for (strEditNoteHold& hold : editNoteHold)
+        {
+            if (static_cast<uint32_t>(nowUs - hold.startUs) >
+                static_cast<uint32_t>(nowUs - slot->startUs))
+            {
+                slot = &hold;
+            }
+        }
+    }
+
+    slot->active = true;
+    slot->source = source;
+    slot->track = track;
+    slot->step = step;
+    slot->note = note;
+    slot->startUs = nowUs;
+}
+
+void Sequencer::beginEditNoteLengthAtSelection(int16_t source)
+{
+    strSelection* sel = &selection;
+    if (!isSelectionCorrect(sel) || !isSingleSelection(sel))
+    {
+        return;
+    }
+
+    beginEditNoteLength(sel->firstTrack, sel->firstStep, source);
+}
+
+// The key `source` has been released: store how long it was held. Time is taken from the real
+// clock and converted with the tempo (there is no running sequencer to count microsteps).
+void Sequencer::endEditNoteLength(int16_t source)
+{
+    for (strEditNoteHold& hold : editNoteHold)
+    {
+        if (!hold.active || hold.source != source)
+        {
+            continue;
+        }
+
+        hold.active = false;
+
+        if (!isEditNoteLengthActive() || hold.track >= kAllTracks || hold.step >= kPatternMaxSteps)
+        {
+            continue;
+        }
+
+        strPattern::strTrack::strStep* noteStep = &currentPattern->track[hold.track].step[hold.step];
+
+        // the step was changed or cleared while the key was held
+        if (noteStep->note != hold.note)
+        {
+            continue;
+        }
+
+        const float microstepUs = getStepPeriodMs() * 1000.0f / kRecMicrostepsPerStep;
+        if (!(microstepUs > 0.0f))
+        {
+            continue;
+        }
+
+        const uint32_t nowUs = Tracker::getInstance()->getPlatform()->getTimer()->micros();
+        const float heldUs = static_cast<float>(static_cast<uint32_t>(nowUs - hold.startUs));
+        const uint32_t heldTicks = static_cast<uint32_t>(heldUs / microstepUs + 0.5f);
+
+        if (writeNoteLength(hold.track,
+                            hold.step,
+                            heldTicks,
+                            getRecStartDelayTicks(noteStep->instrument, noteStep->micromove)))
+        {
+            newFileManager.setActualPatternStructChanged();
+        }
+    }
 }
 
 uint8_t Sequencer::recMicrotiming()
@@ -3032,6 +3191,8 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                     {
                         step->volume = velocityToVolume(velocity);
                     }
+
+                    beginEditNoteLength(static_cast<uint8_t>(trackIdx), sel->firstStep, source);
                 }
                 break;
             }
@@ -3048,6 +3209,9 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
                               [[maybe_unused]] byte velocity,
                               int16_t source) // nr pada, jesli midi to source = nuta+100,
 {
+    // notes entered in edit mode get their length from the time the key was held
+    endEditNoteLength(source);
+
     strSelection* sel = &selection;
     if (!isSelectionCorrect(sel))
         return;

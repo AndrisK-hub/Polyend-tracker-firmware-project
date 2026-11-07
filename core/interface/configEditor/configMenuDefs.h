@@ -273,7 +273,8 @@ const char recNoteLengthDesc[] = {
     "On: live recording stores how long you held each note. Notes shorter than a step get a Gate "
     "length FX, longer notes get an OFF step (with Micro-move) where you let go. Off: original "
     "behavior, only the note is stored and an OFF is placed in the following step. "
-    "Works for pads and MIDI, and only while the sequencer is playing."
+    "Works for pads and MIDI, also when entering notes in edit mode (length = time the key is held, "
+    "at the project tempo)."
 };
 
 const char recThresholdDesc[] = {

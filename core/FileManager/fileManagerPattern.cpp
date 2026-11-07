@@ -28,6 +28,10 @@ static_assert(PatternFileValidation::layoutSize(kAllTracks,
               sizeof(Sequencer::strPattern));
 static_assert(PatternFileValidation::kHeaderBytes == offsetof(Sequencer::strPattern, track));
 static_assert(PatternFileValidation::kStepBytes == sizeof(Sequencer::strPattern::strTrack::strStep));
+static_assert(offsetof(Sequencer::strPattern::strTrack, length) == 0);
+static_assert(offsetof(Sequencer::strPattern::strTrack, step) == sizeof(PatternLength_t));
+static_assert(sizeof(Sequencer::strPattern::strTrack) ==
+              sizeof(PatternLength_t) + PatternFileValidation::kStepBytes * kPatternMaxSteps);
 
 void cFileManager::updateLoadWorkspacePattern()
 {

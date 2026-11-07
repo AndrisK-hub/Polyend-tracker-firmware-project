@@ -4494,6 +4494,11 @@ static void functMiniMiddle(uint8_t state)
                 if (state == buttonPress)
                 {
                     sequencer.setSelectionNote(noteFromPad);
+                    sequencer.beginEditNoteLengthAtSelection(mtProject.values.lastUsedNote + 100);
+                }
+                else if (state == buttonRelease)
+                {
+                    sequencer.endEditNoteLength(mtProject.values.lastUsedNote + 100);
                 }
             }
 
@@ -4714,6 +4719,11 @@ static void functPads(uint8_t pad, uint8_t state, int16_t velo)
                         if (state == buttonPress)
                         {
                             sequencer.setSelectionNote(noteFromPad);
+                            sequencer.beginEditNoteLengthAtSelection(pad);
+                        }
+                        else if (state == buttonRelease)
+                        {
+                            sequencer.endEditNoteLength(pad);
                         }
                     }
                 }

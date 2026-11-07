@@ -847,6 +847,11 @@ class Sequencer
     void setSelectionInstrument(int16_t value);
     void setSelectionNote(int16_t value);
 
+    // Call right after a note was entered at the cursor with a key, and when that key is released.
+    // The length of the note is then stored as it was held (see Config > Rec. note length).
+    void beginEditNoteLengthAtSelection(int16_t source);
+    void endEditNoteLength(int16_t source);
+
     void setStepRepeater(uint8_t track, int8_t stepRepeat);
     void setPerformancePlayMode(uint8_t track, int8_t playmode);
 
@@ -1037,6 +1042,27 @@ class Sequencer
     bool isRecNoteLengthActive();
     uint8_t getRecStartDelayTicks(uint8_t instrument, int8_t micromove);
     bool writeRecordedNoteLength(uint8_t track);
+    bool writeNoteLength(uint8_t track,
+                         uint16_t noteStepIdx,
+                         uint32_t heldTicks,
+                         uint8_t startDelay);
+
+    // note length while entering notes in edit mode (keys, MIDI), where no sequencer clock runs:
+    // the time a key is held is measured with the real clock and converted with the tempo
+    bool isEditNoteLengthActive();
+    void beginEditNoteLength(uint8_t track, uint16_t step, int16_t source);
+
+    struct strEditNoteHold
+    {
+        bool active = false;
+        int16_t source = 0; // pad number, or note + 100 for MIDI (same as handleNoteOn/Off)
+        uint8_t track = 0;
+        uint16_t step = 0;
+        int8_t note = 0; // the note that was entered, to notice when the step changed meanwhile
+        uint32_t startUs = 0;
+    };
+    static constexpr uint8_t kEditNoteHoldCount = 16;
+    strEditNoteHold editNoteHold[kEditNoteHoldCount];
     uint16_t getDestRecordingStep(uint8_t track, bool quantize, bool noteOff = false);
 
     uint8_t getNextArpNote(strPlayer::strPlayerTrack* playerRow);
