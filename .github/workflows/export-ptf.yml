@@ -1,10 +1,16 @@
 name: Export Tracker Mini firmware to a branch
 
-# Copies the Tracker Mini .ptf from the latest successful "Build Tracker CE Firmware" run on main
-# into an orphan branch (firmware-builds), so it can be fetched with plain git.
-# Runs when this file changes, or manually from the Actions tab.
+# After every "Build Tracker CE Firmware" run on main:
+#  - success: copies the Tracker Mini .ptf into an orphan branch (firmware-builds), so it can be
+#    fetched with plain git.
+#  - failure: copies the tail of the failed step's log into an orphan branch (build-logs).
+# Can also be started manually from the Actions tab (uses the latest successful build).
 
 on:
+  workflow_run:
+    workflows: [ "Build Tracker CE Firmware" ]
+    types: [ completed ]
+    branches: [ main ]
   push:
     branches: [ main ]
     paths:
@@ -17,15 +23,21 @@ permissions:
 
 jobs:
   export:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-22.04
     steps:
-      - name: Download firmware artifact of the latest successful build
+      - name: Download firmware artifact of the build
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
-          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --branch main \
-                     --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -n "${EVENT_RUN_ID:-}" ]; then
+            RUN_ID="$EVENT_RUN_ID"
+          else
+            RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --branch main \
+                       --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          fi
           echo "Using build run $RUN_ID"
           echo "$RUN_ID" > run_id.txt
           gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" -n polyend-tracker-ce-firmware -D out
@@ -34,6 +46,7 @@ jobs:
       - name: Publish the Tracker Mini .ptf to the firmware-builds branch
         env:
           GH_TOKEN: ${{ github.token }}
+          BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           mkdir pub
@@ -41,6 +54,7 @@ jobs:
           cd pub
           {
             echo "Tracker Mini firmware copied from build run $(cat ../run_id.txt) of $GITHUB_REPOSITORY"
+            echo "Built from commit: ${BUILD_SHA:-unknown}"
             echo
             sha256sum TrackerMini_*.ptf
           } > README.txt
@@ -51,3 +65,37 @@ jobs:
           git add -A
           git commit -q -m "Tracker Mini firmware from build run $(cat ../run_id.txt)"
           git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" firmware-builds
+
+  report-failure:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Publish the log of the failed build to the build-logs branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -uo pipefail
+          mkdir pub
+          cd pub
+          {
+            echo "Build run $RUN_ID of $GITHUB_REPOSITORY FAILED (commit $BUILD_SHA)"
+            echo
+            echo "=== lines mentioning errors ==="
+          } > build-failure.txt
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed > full.log 2>&1 || true
+          sed -E 's/^[^\t]*\t[^\t]*\t[0-9T:.\-]+Z //' full.log > clean.log
+          grep -nE "error|Error|undefined reference|overflowed|region|static assertion|No rule" clean.log | head -150 >> build-failure.txt || true
+          {
+            echo
+            echo "=== last 150 lines of the failed step ==="
+            tail -150 clean.log
+          } >> build-failure.txt
+          rm -f full.log clean.log
+          git init -q -b build-logs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Log of failed build run $RUN_ID"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" build-logs
