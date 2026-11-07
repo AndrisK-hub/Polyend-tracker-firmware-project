@@ -62,6 +62,12 @@ class Sequencer
         fillStepByStep,
         fillStepEuclidean,
         fillStepDrums,
+        // Generative parts (Tracker Mini): a whole drum, ambient or bass part that evolves over
+        // the selection. They write notes, instruments and volumes by themselves, so they are
+        // only offered when the notes are filled (see fillGenerative()).
+        fillStepGenDrums,
+        fillStepGenAmbient,
+        fillStepGenBass,
         fillStepEnd__
     };
     static constexpr int MAX_FILL_DENSITY = 128;
@@ -941,6 +947,31 @@ class Sequencer
     // the note that plays the drum of this rule on a PERC drum synth (kick, snare, hats...),
     // or -1 for a bad rule
     static int16_t drumRuleSynthNote(int16_t rule);
+
+    // Fill > Where? > Gen Drum / Gen Ambi / Gen Bass (Tracker Mini only).
+    // The selection gets a part that plays through the whole selection like a small song: a
+    // sparse intro, a build, a groove, a break for long selections, a peak and an outro, in
+    // phrases of four bars (one bar = 16 steps), with a fill at the end of every phrase. The
+    // 'style' (1..getGenerativeStyleCount(), 0 = Random) sets the rhythm and the chords, 'evolve'
+    // (0 Gentle, 1 Normal, 2 Wild) how fast the part changes. Every track of the selection gets
+    // one voice of the part, in the order of the Drums beats: a drum set (kick, snare, closed hat,
+    // open hat, percussion, cymbal), the ambient pads (up to four) or one bassline (first track).
+    // The steps of those tracks are rewritten: the notes that do not belong to the part are
+    // removed, the fx and micro-moves stay. 'note' is the pitch for sample drums and the register
+    // of the bass and the pads, 'scale' (with the key of the pad board) keeps them in tune.
+    static bool isGenerativeFill(int16_t fillStep)
+    {
+        return fillStep >= fillStepGenDrums && fillStep < fillStepEnd__;
+    }
+    static bool isGenerativeFillAvailable(); // false on the products without the generator
+    static int16_t getGenerativeStyleCount();
+    static const char* getGenerativeStyleName(int16_t style); // 0 = "Random"
+    static int16_t resolveGenerativeStyle(int16_t style);     // Random -> a random style
+    void fillGenerative(int16_t fillStep,
+                        int16_t scale,
+                        int16_t note,
+                        int16_t style,
+                        int16_t evolve);
 
     bool isStepToFillNote(strPattern::strTrack::strStep* step,
                           uint16_t offset,

@@ -6,6 +6,10 @@
 #include "patternEditor/patternEditor.h"
 #include "patternFileValidation.h"
 
+#ifdef TRACKER_MINI
+#include "mtGenerative.h"
+#endif
+
 #include "ctype.h"
 #include "util_math.h"
 #include <cr_section_macros.h>
@@ -580,6 +584,127 @@ int16_t Sequencer::drumRuleSynthNote(int16_t rule)
         default: return -1;
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Generative parts
+#ifdef TRACKER_MINI
+bool Sequencer::isGenerativeFillAvailable()
+{
+    return true;
+}
+
+int16_t Sequencer::getGenerativeStyleCount()
+{
+    return gen::kStyleCount;
+}
+
+const char* Sequencer::getGenerativeStyleName(int16_t style)
+{
+    if (style < 1 || style > gen::kStyleCount)
+        return "Random";
+    return gen::styleName(style - 1);
+}
+
+int16_t Sequencer::resolveGenerativeStyle(int16_t style)
+{
+    if (style < 1)
+        return static_cast<int16_t>(utilMathRandom::random(1, gen::kStyleCount + 1));
+    return style > gen::kStyleCount ? gen::kStyleCount : style;
+}
+
+void Sequencer::fillGenerative(
+  int16_t fillStep, int16_t scale, int16_t note, int16_t style, int16_t evolve)
+{
+    if (!isGenerativeFill(fillStep))
+        return;
+    strSelection* sel = &selection;
+    if (!isSelectionCorrect(sel))
+        return;
+
+    gen::Setup setup;
+    setup.mode = static_cast<uint8_t>(fillStep - fillStepGenDrums);
+    setup.style = static_cast<uint8_t>(resolveGenerativeStyle(style) - 1);
+    setup.evolve = static_cast<uint8_t>(clamp<int>(evolve, 0, gen::kEvolveCount - 1));
+    setup.seed = static_cast<uint16_t>(utilMathRandom::random(1, 65536)); // a new piece every time
+    setup.length = static_cast<uint16_t>(sel->lastStep - sel->firstStep + 1);
+    setup.root = static_cast<uint8_t>(mtProject.values.padBoardRootNote % 12);
+    setup.scale = static_cast<uint8_t>(clamp<int>(scale, 0, MAX_SCALE));
+    setup.anchor = static_cast<int16_t>(clamp<int>(note, STEP_NOTE_MIN, STEP_NOTE_MAX));
+
+    const int lanes = gen::laneCount(setup.mode);
+    const bool drums = setup.mode == gen::kDrums;
+    // drums on a PERC drum synth: the note is the drum; on samples every hit plays the chosen note
+    const bool perc = isDrumSynthInstrument(mtProject.values.lastUsedInstrument);
+
+    for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
+    {
+        const int lane = t - sel->firstTrack;
+        if (lane >= lanes)
+            break; // no voice left for the other tracks, they stay as they are
+
+        // a drum kit loaded in the order of the instrument list plays right away: every lane
+        // takes the next instrument (not on MIDI tracks and not on a PERC drum synth)
+        const int16_t instrumentStep = (drums && isSampleTrack(t) && !perc) ? lane : 0;
+        const uint8_t instrument = changeInstrumentInSpecificOrder(
+          mtProject.values.lastUsedInstrument, instrumentStep, !isSampleTrack(t));
+        const bool percNotes = drums && isDrumSynthInstrument(instrument);
+
+        for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
+        {
+            strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
+            const gen::Event e = gen::stepEvent(setup, static_cast<uint8_t>(lane), offset);
+            if (e.on)
+            {
+                step->instrument = instrument;
+                if (percNotes)
+                    step->note = static_cast<int8_t>(gen::drumNote(static_cast<uint8_t>(lane)));
+                else if (drums)
+                    step->note = static_cast<int8_t>(setup.anchor);
+                else
+                    step->note = static_cast<int8_t>(clamp<int>(e.note, STEP_NOTE_MIN, STEP_NOTE_MAX));
+                // the volume of a step is a percentage, the generator speaks in velocities
+                step->volume = static_cast<int8_t>(clamp<int>((e.velocity * 100 + 63) / 127, 1, 100));
+            }
+            else if (e.off)
+            {
+                // the bass is cut, the pads fade out
+                step->note = setup.mode == gen::kBass ? STEP_NOTE_OFF_CUT : STEP_NOTE_OFF_FADE;
+                step->instrument = instrument;
+                step->volume = STEP_VELO_DEFAULT;
+            }
+            else
+            {
+                step->note = STEP_NOTE_EMPTY;
+                step->volume = STEP_VELO_DEFAULT;
+            }
+        }
+    }
+}
+#else
+bool Sequencer::isGenerativeFillAvailable()
+{
+    return false;
+}
+
+int16_t Sequencer::getGenerativeStyleCount()
+{
+    return 0;
+}
+
+const char* Sequencer::getGenerativeStyleName(int16_t)
+{
+    return "Random";
+}
+
+int16_t Sequencer::resolveGenerativeStyle(int16_t style)
+{
+    return style;
+}
+
+void Sequencer::fillGenerative(int16_t, int16_t, int16_t, int16_t, int16_t)
+{
+}
+#endif
 
 bool Sequencer::isStepToFillFx(strPattern::strTrack::strStep* step,
                                uint16_t offset,

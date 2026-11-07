@@ -142,6 +142,13 @@ class cPatternEditor : public ModuleBase
     void refreshFillParam();
     void refreshFillStep();
     void refreshFillDensity();
+    void refreshFillTypeList();
+    void refreshFillScale();
+    // Fill > Where? > Gen Drum / Gen Ambi / Gen Bass: one style list in the density slot, the
+    // Fill Type list becomes Evolve, there is no 'To' and (drums) no scale
+    bool isFillGenerative() const;
+    // how many entries the Where? list has: the generative parts only for the notes of the Mini
+    int16_t fillStepListLength() const;
     void hideFillPopup();
 
     void activateGreenSelection();

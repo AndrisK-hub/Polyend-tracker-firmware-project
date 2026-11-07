@@ -159,6 +159,9 @@ void cPatternEditor::initExternalRamState()
         fillData[i].density[Sequencer::fillStepRandom] = Sequencer::MAX_FILL_DENSITY / 2;
         fillData[i].density[Sequencer::fillStepByStep] = 1;
         fillData[i].density[Sequencer::fillStepEuclidean] = 3;
+        fillData[i].density[Sequencer::fillStepGenDrums] = 1; // SynthPop
+        fillData[i].density[Sequencer::fillStepGenAmbient] = 1;
+        fillData[i].density[Sequencer::fillStepGenBass] = 1;
         fillData[i].fillStep = Sequencer::fillStepByStep;
     }
     fillData[5].from = 50;
@@ -1529,7 +1532,7 @@ void cPatternEditor::changeFillData(int16_t value, bool rollListOver)
         case 0: // step
             ptrVal = &fillData[fillIdx].fillStep;
             min = Sequencer::fillStepNote;
-            max = Sequencer::fillStepEnd__ - 1;
+            max = fillStepListLength() - 1;
             break;
         case 1: // type
             ptrVal = &fillData[fillIdx].type;
@@ -1602,6 +1605,11 @@ void cPatternEditor::changeFillData(int16_t value, bool rollListOver)
                 min = 0; // Random
                 max = Sequencer::getDrumPatternCount();
             }
+            else if (Sequencer::isGenerativeFill(fillData[fillIdx].fillStep))
+            {
+                min = 0; // Random
+                max = Sequencer::getGenerativeStyleCount();
+            }
             else
             {
                 min = 1;
@@ -1649,7 +1657,7 @@ void cPatternEditor::changneFillDataByPad(uint8_t pad)
     {
         case 0: // step
         {
-            if (pad < Sequencer::fillStepEnd__)
+            if (pad < fillStepListLength())
                 fillData[fillIdx].fillStep = pad;
             break;
         }
@@ -1724,6 +1732,9 @@ void cPatternEditor::changneFillDataByPad(uint8_t pad)
             if (fillData[fillIdx].fillStep == Sequencer::fillStepDrums &&
                 pad <= Sequencer::getDrumPatternCount())
                 fillData[fillIdx].density[Sequencer::fillStepDrums] = pad;
+            else if (Sequencer::isGenerativeFill(fillData[fillIdx].fillStep) &&
+                     pad <= Sequencer::getGenerativeStyleCount())
+                fillData[fillIdx].density[fillData[fillIdx].fillStep] = pad; // pad 0 = Random
             break;
         }
         case 4: // param
@@ -1773,7 +1784,10 @@ bool cPatternEditor::isFillPlaceValid(uint8_t place)
     // place 1 not available in some step modes
     return !(((editParam == EditInstr || (isMicVolView && editParam >= EditFx1)) && place == 2) ||
              (fillData[fillIdx].fillStep < Sequencer::fillStepRandom && place == 1) ||
-             (fillData[fillIdx].type == 0 && place > 4));
+             ((fillData[fillIdx].type == 0 || isFillGenerative()) && place > 4) ||
+             // the generative drums do not follow a scale
+             (editParam == EditNote && fillData[fillIdx].fillStep == Sequencer::fillStepGenDrums &&
+              place == 2));
 }
 
 void cPatternEditor::setFillPlace(uint8_t place, int8_t dir)
@@ -3481,7 +3495,13 @@ static void functFillApply()
         switch (PTE->editParam)
         {
             case cPatternEditor::EditNote:
-                if (fillData->type == 2)
+                if (Sequencer::isGenerativeFill(fillData->fillStep))
+                {
+                    // density holds the style here (0 = Random), type how fast the part evolves
+                    sequencer.fillGenerative(
+                      fillData->fillStep, fillData->param, fillData->from, density, fillData->type);
+                }
+                else if (fillData->type == 2)
                 {
                     sequencer.fillRandomNotes(fillData->fillStep,
                                               fillData->param,

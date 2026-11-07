@@ -45,6 +45,17 @@ const char* ptrfillTypeListNames[fillTypeListCount] = {
     &fillTypeListLabels[1][0],
     &fillTypeListLabels[2][0],
 };
+// the generative parts use the same list slot for how fast the part changes
+const char fillEvolveLabels[fillTypeListCount][11] = {
+    "Gentle",
+    "Normal",
+    "Wild",
+};
+const char* ptrfillEvolveNames[fillTypeListCount] = {
+    &fillEvolveLabels[0][0],
+    &fillEvolveLabels[1][0],
+    &fillEvolveLabels[2][0],
+};
 //------------------------------------------------------------
 static const uint8_t fillScaleFilterCount = 2;
 const char fillScaleFilterLabels[fillScaleFilterCount][5] = {
@@ -56,15 +67,17 @@ const char* ptrfillScaleFilterNames[fillScaleFilterCount] = {
     &fillScaleFilterLabels[1][0],
 };
 //------------------------------------------------------------
-static const uint8_t fillStepCount = 8;
+static const uint8_t fillStepCount = 11;
 static_assert(fillStepCount == Sequencer::fillStepEnd__, "one name for every fill step rule");
 const char fillStepLabels[fillStepCount][11] = {
-    "Note", "No Note", "Fx", "No Fx", "Random", "Each", "Euclidean", "Drums",
+    "Note",  "No Note", "Fx",       "No Fx",    "Random",   "Each",
+    "Euclidean", "Drums", "Gen Drum", "Gen Ambi", "Gen Bass",
 };
 
 const char* ptrfillStepNames[fillStepCount] = {
     &fillStepLabels[0][0], &fillStepLabels[1][0], &fillStepLabels[2][0], &fillStepLabels[3][0],
     &fillStepLabels[4][0], &fillStepLabels[5][0], &fillStepLabels[6][0], &fillStepLabels[7][0],
+    &fillStepLabels[8][0], &fillStepLabels[9][0], &fillStepLabels[10][0],
 };
 //------------------------------------------------------------
 
@@ -571,7 +584,7 @@ void cPatternEditor::showFillPopup()
 {
     uint8_t fillIdx = getFillDataIdx();
 
-    if (fillData[fillIdx].type == 0)
+    if (fillData[fillIdx].type == 0 || isFillGenerative())
     {
         if (fillPlace > 4)
             fillPlace = 4;
@@ -600,7 +613,7 @@ void cPatternEditor::showFillPopup()
     // step
     fillStepList.linesCount = fillStepCount;
     fillStepList.start = fillData[fillIdx].fillStep;
-    fillStepList.length = fillStepCount;
+    fillStepList.length = fillStepListLength();
     fillStepList.data = (char**)(&ptrfillStepNames);
     fillStepList.lineWidthMax = 800 / 8 - 30;
     fillStepList.lineTextLenMax = 11;
@@ -617,7 +630,8 @@ void cPatternEditor::showFillPopup()
     fillTypeList.linesCount = fillTypeListCount;
     fillTypeList.start = fillData[fillIdx].type;
     fillTypeList.length = fillTypeListCount;
-    fillTypeList.data = (char**)(&ptrfillTypeListNames);
+    fillTypeList.data = isFillGenerative() ? (char**)(&ptrfillEvolveNames) :
+                                             (char**)(&ptrfillTypeListNames);
     fillTypeList.lineWidthMax = 800 / 8 - 30;
     fillTypeList.lineTextLenMax = 11;
 
@@ -625,7 +639,7 @@ void cPatternEditor::showFillPopup()
     display.setControlData(param1PopupListControl, &fillTypeList);
     display.setControlValue(param1PopupListControl, fillData[fillIdx].type);
 
-    display.setControlText(label[3], "Fill Type");
+    display.setControlText(label[3], isFillGenerative() ? "Evolve" : "Fill Type");
     display.setControlValue(label[3], 0);
 
     // density
@@ -741,6 +755,7 @@ void cPatternEditor::showFillPopup()
     refreshFillType();
     refreshFillPlace();
     refreshFillDensity();
+    refreshFillScale();
     activateFillPopupBorder();
 
     display.synchronizeRefresh();
@@ -756,7 +771,10 @@ void cPatternEditor::refreshFillType()
     fillText1[0] = 0;
     fillText2[0] = 0;
 
-    if (fillData[fillIdx].type == 0)
+    // Constant and the generative parts have one note only
+    const bool oneValue = fillData[fillIdx].type == 0 || isFillGenerative();
+
+    if (oneValue)
     {
         display.setControlValue(val2PopupBar, -1);
         display.setControlText(label[5], "");
@@ -773,9 +791,14 @@ void cPatternEditor::refreshFillType()
         display.setControlText2(label[4], (char*)&mtNotes[fillData[fillIdx].from][0]);
         display.setControlValue(val1PopupBar, (fillData[fillIdx].from * 100) / (127));
 
-        if (fillData[fillIdx].type == 0)
+        if (oneValue)
         {
-            display.setControlText(label[4], "Note");
+            // drums: the note of the sample drums; bass and pads: where the part sits
+            display.setControlText(label[4],
+                                   fillData[fillIdx].fillStep == Sequencer::fillStepGenAmbient ||
+                                       fillData[fillIdx].fillStep == Sequencer::fillStepGenBass
+                                     ? "Register"
+                                     : "Note");
         }
         else
         {
@@ -936,7 +959,7 @@ void cPatternEditor::refreshFillTo()
 
     fillText2[0] = 0;
 
-    if (fillData[fillIdx].type == 0)
+    if (fillData[fillIdx].type == 0 || isFillGenerative())
     {
         display.setControlText(label[5], "");
         display.setControlText2(label[5], "");
@@ -1091,6 +1114,21 @@ void cPatternEditor::refreshFillDensity()
                          Sequencer::getDrumPatternName(pattern));
             }
             break;
+        case Sequencer::fillStepGenDrums:
+        case Sequencer::fillStepGenAmbient:
+        case Sequencer::fillStepGenBass:
+            // 0 = Random, 1.. = the styles (SynthPop, Techno, ...)
+            labelText = "Style";
+            {
+                int16_t style = fillData[fillIdx].density[fillData[fillIdx].fillStep];
+                const int16_t styles = Sequencer::getGenerativeStyleCount();
+                value = styles > 0 ? style * 100 / styles : 0;
+                snprintf(fillTextDensity,
+                         sizeof(fillTextDensity),
+                         "%s",
+                         Sequencer::getGenerativeStyleName(style));
+            }
+            break;
         default: break;
     }
     if (labelText != nullptr)
@@ -1121,7 +1159,67 @@ void cPatternEditor::refreshFillStep()
 
     display.refreshControl(param3PopupListControl);
 
+    // a generative part sits at a register: bring a very low note up to something playable
+    if (isFillGenerative() && fillData[fillIdx].from < 24)
+    {
+        fillData[fillIdx].from = (fillData[fillIdx].fillStep == Sequencer::fillStepGenBass) ? 48 : 60;
+    }
+
+    refreshFillTypeList();
+    refreshFillType();
     refreshFillDensity();
+    refreshFillScale();
+}
+
+void cPatternEditor::refreshFillTypeList()
+{
+    const uint8_t fillIdx = getFillDataIdx();
+    const bool generative = isFillGenerative();
+
+    fillTypeList.data =
+      generative ? (char**)(&ptrfillEvolveNames) : (char**)(&ptrfillTypeListNames);
+    display.setControlData(param1PopupListControl, &fillTypeList);
+    display.setControlValue(param1PopupListControl, fillData[fillIdx].type);
+    display.setControlText(label[3], generative ? "Evolve" : "Fill Type");
+    display.refreshControl(label[3]);
+    display.refreshControl(param1PopupListControl);
+}
+
+// the scale list belongs to the notes; the generative drums do not follow a scale
+void cPatternEditor::refreshFillScale()
+{
+    if (editParam != EditNote)
+        return;
+    const uint8_t fillIdx = getFillDataIdx();
+
+    if (fillData[fillIdx].fillStep == Sequencer::fillStepGenDrums)
+    {
+        display.setControlText(label[2], "");
+        display.setControlText2(label[2], "");
+        display.setControlData(param2PopupListControl, &fillEmptyList);
+        display.setControlValue(param2PopupListControl, -1);
+    }
+    else
+    {
+        display.setControlData(param2PopupListControl, &fillScaleFilterList);
+        display.setControlValue(param2PopupListControl, fillData[fillIdx].param);
+        display.setControlText(label[2], "Scale");
+        display.setControlText2(label[2], "");
+    }
+    display.refreshControl(label[2]);
+    display.refreshControl(param2PopupListControl);
+}
+
+bool cPatternEditor::isFillGenerative() const
+{
+    return editParam == EditNote && Sequencer::isGenerativeFill(fillData[getFillDataIdx()].fillStep);
+}
+
+int16_t cPatternEditor::fillStepListLength() const
+{
+    return (editParam == EditNote && Sequencer::isGenerativeFillAvailable())
+             ? static_cast<int16_t>(Sequencer::fillStepEnd__)
+             : static_cast<int16_t>(Sequencer::fillStepGenDrums);
 }
 
 void cPatternEditor::hideFillPopup()
