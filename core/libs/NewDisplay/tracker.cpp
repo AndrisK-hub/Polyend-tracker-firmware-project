@@ -1327,7 +1327,13 @@ static void Number2HexBitmaps(int16_t x, int16_t y, uint8_t font_x, uint8_t font
         x += font_x;
     }
 
-    // note: only prints the last two hex digits of the number (00-FF)
+    // long patterns (256 steps and more) get a third hex digit in front
+    if (number >= 256)
+    {
+        draw_char(x, y, (number / 256) % 10 + 48);
+        x += font_x - 1;
+    }
+
     number = number % 256;
     digit = number / 16;
     number = number % 16;

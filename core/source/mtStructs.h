@@ -95,7 +95,18 @@ const uint32_t SAMPLE_MEMORY_SIZE = (45 * 256 * 1024);     // 11,25 MB = 133.746
 // Tmini / Tplus
 const uint32_t EXTERAL_MEMORY_ADDRESS = 0x80000000;
 const uint32_t TOTAL_EXTERNAL_MEMORY = (64 * 1024 * 1024); // 64 MB
-const uint32_t SAMPLE_MEMORY_SIZE = ((60 * 1024 - 64) * 1024); // ~60 MB minus 64 KB for pattern buffers
+// ~60 MB minus 64 KB for pattern buffers, minus what the bigger pattern buffers need. There are 37
+// pattern buffers in external RAM (undo, song edit, file manager, sequencer, copy/paste):
+//   128 steps: 16 KB each (nothing extra), 512 steps: 64 KB each (+1.75 MB), 1024 steps: 128 KB each
+//   (+4.05 MB). The extra is taken from the sample pool, long samples are streamed from the SD card.
+#if PATTERN_MAX_STEPS == 128
+const uint32_t PATTERN_BUFFERS_EXTRA_KB = 0;
+#elif PATTERN_MAX_STEPS == 512
+const uint32_t PATTERN_BUFFERS_EXTRA_KB = 2048;
+#else
+const uint32_t PATTERN_BUFFERS_EXTRA_KB = 4352;
+#endif
+const uint32_t SAMPLE_MEMORY_SIZE = ((60 * 1024 - 64 - PATTERN_BUFFERS_EXTRA_KB) * 1024);
 #endif
 
 const uint32_t DELAY_MEMORY_SIZE = (3 * 512 * 1024);               // 1,5 MB

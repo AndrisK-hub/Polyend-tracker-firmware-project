@@ -8,7 +8,16 @@ All notable changes to the **Polyend Tracker Community Edition (CE)** firmware a
 
 ### Added
 
-1. **Live recording of note length (All 3 Devices)**
+1. **Longer patterns: up to 512 steps (Tracker Mini only)**
+   * A pattern can now be up to 512 steps long (was 128). Original Tracker and Tracker+ stay at 128 steps.
+   * The length can be set with the encoder, with the length jump values (which now continue 192, 256, 320, 384, 512) or with the pads (pads still reach 191 steps).
+   * Pattern files (`.mtp`) use a new format (**Version 7**) with 512 steps for each of the 16 tracks, so a saved pattern is about 64 KB instead of 16 KB.
+   * **Compatibility:** existing projects (stock, CE and earlier builds of this firmware) open normally; their patterns are expanded to 512 steps in memory. Once you save, the pattern files are Version 7 and **cannot be read by stock/CE firmware**. Back up your `Projects/` folder first.
+   * About 2 MB of the sample pool (`SAMPLE_MEMORY_SIZE`) is used for the bigger pattern buffers. Samples of 256 KB and more are streamed from the SD card, so this is not noticeable in normal use.
+   * The maximum is a single setting (`PATTERN_MAX_STEPS`, in `core/source/mtStructs.h`); 128, 512 and 1024 have their own file versions.
+   * Known limits: the custom performance play orders still cover only the first 128 steps, and in hexadecimal numbering mode the horizontal pattern views show only the last two digits of the step number.
+
+2. **Live recording of note length (All 3 Devices)**
    * New `Config > General > Rec. note length` option (`On` / `Off`, default `On`).
    * `On`: while the sequencer is playing, live recording (pads and MIDI) stores how long each note was held, in any `Recording options` mode. A note held for less than a step gets a `Gate length` FX on its step. A note held for a step or longer gets an `OFF` step where it was released, with `Micro-move` for the position inside that step.
    * `Off`: the original behavior. Only the note is stored and an `OFF` is placed in the step following it.
