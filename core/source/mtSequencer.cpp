@@ -4182,3 +4182,18 @@ int instrumentIdxToSynthIdx(int instrumentIdx)
     assert(isSynthInstrument(instrumentIdx));
     return instrumentIdxToMidiChannel(instrumentIdx) - 1;
 }
+
+bool isDrumSynthInstrument(int instrument)
+{
+#ifdef FEATURE_SYNTH
+    if (instrument < 0 || instrument >= kTotalInstrumentsCount || !isSynthInstrument(instrument))
+        return false;
+    const int32_t synthType = mtProject.values.synthPart[instrumentIdxToSynthIdx(instrument)].synthType;
+    return synthType >= 0 && synthType < static_cast<int32_t>(Synth::kSynthTypes.size()) &&
+           Synth::kSynthTypes[static_cast<size_t>(synthType)] ==
+             polysynth::InstrumentTypeId::kDrumSynth;
+#else
+    (void)instrument;
+    return false;
+#endif
+}

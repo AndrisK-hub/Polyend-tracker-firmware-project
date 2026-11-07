@@ -17,6 +17,7 @@ bool isMidiInstrument(int instrument);
 bool isSynthInstrument(int instrument);
 int instrumentIdxToMidiChannel(int instrument);
 int instrumentIdxToSynthIdx(int instrumentIdx);
+bool isDrumSynthInstrument(int instrument); // a synth instrument that runs the PERC drum engine
 bool isSampleTrack(int track);
 bool isPerformanceTrack(int track);
 
@@ -937,6 +938,9 @@ class Sequencer
     // how many places after the first instrument a hit of this rule takes: the lane of a beat,
     // 0 for a single rhythm (every track gets the same instrument) and for a bad rule
     static int16_t drumRuleInstrumentStep(int16_t rule);
+    // the note that plays the drum of this rule on a PERC drum synth (kick, snare, hats...),
+    // or -1 for a bad rule
+    static int16_t drumRuleSynthNote(int16_t rule);
 
     bool isStepToFillNote(strPattern::strTrack::strStep* step,
                           uint16_t offset,

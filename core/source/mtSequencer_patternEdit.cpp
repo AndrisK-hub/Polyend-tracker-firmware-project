@@ -43,9 +43,18 @@ static inline int16_t fillRuleForTrack(int16_t fillStep,
 // do this: a MIDI track has one instrument per channel and keeps the last used one.
 static inline int16_t fillInstrumentStep(int16_t fillStep, int16_t rule, uint8_t track)
 {
-    return fillStep == Sequencer::fillStepDrums && isSampleTrack(track)
+    // one PERC drum synth plays every drum by note: all lanes stay on it
+    return fillStep == Sequencer::fillStepDrums && isSampleTrack(track) &&
+               !isDrumSynthInstrument(mtProject.values.lastUsedInstrument)
              ? Sequencer::drumRuleInstrumentStep(rule)
              : 0;
+}
+
+// The note of a Drums hit on a PERC drum synth (the drum of the lane or rhythm), -1 for the other
+// rules. The note chosen in the popup is for samples and other synths; on PERC the note is the drum.
+static inline int16_t fillDrumSynthNote(int16_t fillStep, int16_t rule)
+{
+    return fillStep == Sequencer::fillStepDrums ? Sequencer::drumRuleSynthNote(rule) : -1;
 }
 
 void Sequencer::fillRandomNotes(int16_t fillStep,
@@ -66,6 +75,7 @@ void Sequencer::fillRandomNotes(int16_t fillStep,
     {
         const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
         const int16_t instrumentStep = fillInstrumentStep(fillStep, rule, t);
+        const int16_t drumNote = fillDrumSynthNote(fillStep, rule);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             step = &currentPattern->track[t].step[s];
@@ -75,6 +85,11 @@ void Sequencer::fillRandomNotes(int16_t fillStep,
                 {
                     step->instrument = changeInstrumentInSpecificOrder(
                       mtProject.values.lastUsedInstrument, instrumentStep, !isSampleTrack(t));
+                }
+                if (drumNote >= 0 && isDrumSynthInstrument(step->instrument))
+                {
+                    step->note = static_cast<int8_t>(drumNote); // PERC: the note is the drum
+                    continue;
                 }
                 for (uint8_t a = 0; a <= 100; a -= -1)
                 {
@@ -103,11 +118,27 @@ void Sequencer::fillLinearNotes(int16_t fillStep,
     {
         const int16_t rule = fillRuleForTrack(fillStep, density, t, sel->firstTrack);
         const int16_t instrumentStep = fillInstrumentStep(fillStep, rule, t);
+        const int16_t drumNote = fillDrumSynthNote(fillStep, rule);
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             step = &currentPattern->track[t].step[s];
             if (isStepToFillNote(step, offset, fillStep, rule))
             {
+                if (drumNote >= 0) // PERC: the note is the drum, whatever the scale
+                {
+                    const int instrument =
+                      step->isNoteEmpty() ? changeInstrumentInSpecificOrder(
+                                              mtProject.values.lastUsedInstrument,
+                                              instrumentStep,
+                                              !isSampleTrack(t))
+                                          : step->instrument;
+                    if (isDrumSynthInstrument(instrument))
+                    {
+                        step->instrument = static_cast<uint8_t>(instrument);
+                        step->note = static_cast<int8_t>(drumNote);
+                        continue;
+                    }
+                }
                 int newNote = round(mapClamped<float>(
                   (float)offset + sel->firstStep, sel->firstStep, sel->lastStep, from, to));
 
@@ -520,6 +551,34 @@ int16_t Sequencer::drumRuleInstrumentStep(int16_t rule)
     if (drumPatterns[pattern - 1].lanes[1] == nullptr)
         return 0; // a single rhythm
     return static_cast<int16_t>((rule >> 8) & 0x07);
+}
+
+// Notes of the PERC drum synth. The pad lighting of the instrument editor marks the first note
+// of each drum section: kick 60, snare 62, closed hat 64, open hat 66, cymbal 68, percussion 70.
+// A beat gives its lanes (kick, snare/clap, closed hat, open hat, percussion A and B) the drum of
+// that kind; a single rhythm takes the drum of its role letter (K, S, H, P).
+int16_t Sequencer::drumRuleSynthNote(int16_t rule)
+{
+    constexpr int16_t kKick = 60, kSnare = 62, kClosedHat = 64, kOpenHat = 66, kPercussion = 70;
+    constexpr int16_t laneNotes[kDrumLanes] = { kKick,       kSnare,      kClosedHat,  kOpenHat,
+                                                kPercussion, kPercussion, kPercussion, kPercussion };
+    int16_t pattern = rule & 0xFF;
+    if (rule < 0 || pattern < 1 || pattern > drumPatternsCount)
+        return -1;
+    const strDrumPattern& drums = drumPatterns[pattern - 1];
+    if (drums.lanes[1] != nullptr)
+        return laneNotes[(rule >> 8) & 0x07];
+    // the offbeat hats are the open hat of the beats
+    if (strcmp(drums.name, "H Offbeat") == 0)
+        return kOpenHat;
+    switch (drums.name[0])
+    {
+        case 'K': return kKick;
+        case 'S': return kSnare;
+        case 'H': return kClosedHat;
+        case 'P': return kPercussion;
+        default: return -1;
+    }
 }
 
 bool Sequencer::isStepToFillFx(strPattern::strTrack::strStep* step,
