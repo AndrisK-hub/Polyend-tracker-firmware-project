@@ -4590,9 +4590,12 @@ void cPatternEditor::lightUpPadBoard()
     }
 }
 
-// Shift + centre button: select the whole track (column) from any cursor position, so there is no
-// need to scroll to the end of the track first. Pressed again: select all tracks. This gives the
-// same result as the built-in Shift+Up on step 0 (previousStep), without having to be on step 0.
+// Shift + centre button: grow the selection to the full length of the pattern, so there is no need
+// to scroll to the last step first. It steps up in three stages, each press taking the next one:
+//   nothing selected / only a part of the steps -> the whole length of the track(s) that are
+//                                                  selected (the cursor track when nothing is)
+//   whole length of some tracks already          -> all tracks
+// This is the same selection as the built-in Shift+Up on step 0 (previousStep), from any step.
 static void selectWholeTrackOrAll()
 {
     // same rule as previousStep(): navigation is locked while the song plays in preview mode
@@ -4601,24 +4604,34 @@ static void selectWholeTrackOrAll()
         return;
     }
 
-    if (PTE->trackerPattern.selectColumn == 1 && PTE->trackerPattern.selectState == 2)
-    {
-        // a whole track is already selected -> select everything
-        PTE->trackerPattern.selectStartStep = 0;
-        PTE->trackerPattern.selectStartTrack = 0;
-        PTE->trackerPattern.selectEndStep = PTE->trackerPattern.patternLength - 1;
-        PTE->trackerPattern.selectEndTrack = kAllTracks - 1;
-    }
-    else
-    {
-        PTE->trackerPattern.selectColumn = 1;
-        PTE->trackerPattern.selectStartStep = 0;
-        PTE->trackerPattern.selectStartTrack = PTE->trackerPattern.actualTrack;
-        PTE->trackerPattern.selectEndStep = PTE->trackerPattern.patternLength - 1;
-        PTE->trackerPattern.selectEndTrack = PTE->trackerPattern.actualTrack;
-    }
+    strTrackerPattern& tp = PTE->trackerPattern;
+    const int16_t lastStep = tp.patternLength - 1;
 
-    PTE->trackerPattern.selectState = 2;
+    const bool hasSelection = tp.selectState == 2;
+    const int16_t firstSelStep = tp.selectStartStep < tp.selectEndStep ? tp.selectStartStep :
+                                                                         tp.selectEndStep;
+    const int16_t lastSelStep = tp.selectStartStep < tp.selectEndStep ? tp.selectEndStep :
+                                                                        tp.selectStartStep;
+    const bool wholeLength = tp.selectColumn == 1 || (firstSelStep <= 0 && lastSelStep >= lastStep);
+
+    if (!hasSelection)
+    {
+        // only the cursor: the track it is on
+        tp.selectStartTrack = tp.actualTrack;
+        tp.selectEndTrack = tp.actualTrack;
+    }
+    else if (wholeLength)
+    {
+        // the whole length of some tracks is selected already: select everything
+        tp.selectStartTrack = 0;
+        tp.selectEndTrack = kAllTracks - 1;
+    }
+    // else: only a part of the steps: keep the tracks, extend them to the whole length
+
+    tp.selectColumn = 1;
+    tp.selectStartStep = 0;
+    tp.selectEndStep = lastStep;
+    tp.selectState = 2;
     PTE->isSelectingNow = 1;
 
     PTE->showFxInfo();
