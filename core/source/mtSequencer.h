@@ -955,7 +955,7 @@ class Sequencer
 
     // Fill > Where? > Gen Drum / Gen Ambi / Gen Bass / Gen Lead (Tracker Mini only).
     // The selection gets a part that plays through the whole selection like a small song: a
-    // sparse intro, a build, a groove, a break for long selections, a peak and an outro, in
+    // sparse intro, a build, a groove, a breakdown for long selections, a peak and an outro, in
     // phrases of four bars (one bar = 16 steps), with a fill at the end of every phrase. The
     // 'style' (1..getGenerativeStyleCount(), 0 = Random) sets the rhythm and the chords, 'evolve'
     // (0 Gentle, 1 Normal, 2 Wild) how fast the part changes. 'song' (1..kGenerativeSongs) picks

@@ -2,15 +2,16 @@
 // the selected steps (Tracker Mini).
 //
 // Everything here is a pure function of (setup, lane, step): no state is kept, so the same setup
-// always gives the same music and every part of one song agrees on the form (intro, build, break,
+// always gives the same music and every part of one song agrees on the form (intro, build, breakdown,
 // peak, outro) and on the chords, because they all derive them from the same seed. The seed is
 // made from the style and the song number (songSeed()), so a drum part, a bassline and a lead
 // that are filled one after the other with the same style and song belong together.
 //
 // Time: a step is a sixteenth note, a bar is 16 steps and a phrase is 4 bars. The selection is
-// laid out as an arrangement of phrases. Each phrase has an energy from 0 (break) to 4 (peak):
-// short selections just get a steady groove, longer ones build up from a sparse intro, hold,
-// drop out for a break about 55% of the way through, come back at the peak and end calmer. The
+// laid out as an arrangement of phrases. Each phrase has an energy from 1 (intro, breakdown) to 4
+// (peak): short selections just get a steady groove, longer ones build up from a sparse intro,
+// hold, thin out to a breakdown about 55% of the way through, come back at the peak and end
+// calmer. The music never stops: every part plays through the whole selection. The
 // last bar of every phrase is a fill (a snare roll, an open hat, a kick drop, a bass pickup).
 #ifndef MT_GENERATIVE_H_
 #define MT_GENERATIVE_H_
@@ -62,7 +63,7 @@ struct Setup
 struct Event
 {
     bool on = false;        // a note starts here
-    bool off = false;       // the voice fades out here (a break)
+    bool off = false;       // the voice fades out here (it drops out of the arrangement)
     uint8_t velocity = 0;   // 1..127 when on
     int16_t note = 0;       // melodic parts: the note
     // melodic parts: how long the note sounds, in 1/48 of a step. 0 = until the next note.
@@ -88,7 +89,9 @@ int chordRoot(const Setup& setup, int bar);
 int chordLength(const Setup& setup);
 
 // helpers that the tests and the editor share
-int barEnergy(const Setup& setup, int bar); // 0 (break) .. 4 (peak)
+int barEnergy(const Setup& setup, int bar); // 1 (intro, breakdown) .. 4 (peak)
+// true in the bars of the breakdown (selections of 6 phrases = 24 bars and more)
+bool isBreakBar(const Setup& setup, int bar);
 bool isFillBar(const Setup& setup, int bar);
 } // namespace gen
 

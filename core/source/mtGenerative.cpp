@@ -166,6 +166,18 @@ int evolveIndex(const Setup& s)
     return s.evolve < kEvolveCount ? static_cast<int>(s.evolve) : static_cast<int>(kNormal);
 }
 
+// The break of a long arrangement (6 phrases or more) sits at 55%. It is a breakdown, not a gap:
+// the music thins out to the energy of the intro (kick, hats, the first pad voice, the bass and
+// the main notes of the lead) so that the whole selection is always filled.
+bool isBreakPhrase(int phrase, int phrases)
+{
+    if (phrases < 6)
+        return false;
+    const int brk = (phrases * 11 + 10) / 20;
+    const int breakLen = phrases >= 12 ? 2 : 1;
+    return phrase >= brk && phrase < brk + breakLen;
+}
+
 // the energy a phrase would have without any chance
 int phraseBase(int phrase, int phrases)
 {
@@ -178,11 +190,10 @@ int phraseBase(int phrase, int phrases)
         const int pct = ((phrase * 2 + 1) * 100) / (phrases * 2);
         return pct < 15 ? 1 : (pct < 45 ? 2 : (pct < 75 ? 3 : 4));
     }
-    // 6 phrases or more: intro, build, a break at 55%, the peak, an outro
+    // 6 phrases or more: intro, build, a breakdown at 55%, the peak, an outro
     const int brk = (phrases * 11 + 10) / 20;
-    const int breakLen = phrases >= 12 ? 2 : 1;
-    if (phrase >= brk && phrase < brk + breakLen)
-        return 0;
+    if (isBreakPhrase(phrase, phrases))
+        return 1;
     if (phrase == phrases - 1)
         return 3;
     if (phrase > brk)
@@ -204,7 +215,8 @@ int phraseEnergy(const Setup& s, int phrase)
 {
     const int phrases = phraseCount(s);
     int e = phraseBase(phrase, phrases);
-    if (phrases >= 3 && phrase != 0 && phrase != phrases - 1 && phrase != firstPeakPhrase(phrases) && e != 0)
+    if (phrases >= 3 && phrase != 0 && phrase != phrases - 1 && phrase != firstPeakPhrase(phrases) &&
+        !isBreakPhrase(phrase, phrases))
     {
         static const uint8_t chance[kEvolveCount] = { 26, 64, 115 }; // of 255
         if (rnd(s, 101, static_cast<uint32_t>(phrase), 0) < chance[evolveIndex(s)])
@@ -465,7 +477,7 @@ Hit bassHit(const Setup& s, const Style& st, uint16_t offset, bool* pickup)
 }
 
 // Pad voices: they enter as the energy rises, roll in one after another on a chord change, and
-// are cut in the break. 'ornament' is set for the single high notes between the chords.
+// fade out in the breakdown. 'ornament' is set for the single high notes between the chords.
 constexpr int8_t kVoiceMinEnergy[kAmbientVoices] = { 1, 2, 2, 3 };
 
 Hit padHit(const Setup& s, const Style& st, uint8_t voice, uint16_t offset, bool* ornament)
@@ -488,7 +500,13 @@ Hit padHit(const Setup& s, const Style& st, uint8_t voice, uint16_t offset, bool
         return h;
     }
     if (e < kVoiceMinEnergy[voice])
+    {
+        // a voice that drops out (into the breakdown, or when the energy falls) fades out, one
+        // voice after the other, so that it does not ring through the thinner part
+        if (pos == voice * 2 && before >= kVoiceMinEnergy[voice])
+            h.off = true;
         return h;
+    }
 
     if (pos == voice * 4) // the voices roll in one beat apart
     {
@@ -533,15 +551,9 @@ Hit leadHit(const Setup& s, const Style& st, uint16_t offset)
     const int bar = offset / kBarSteps;
     const int pos = offset % kBarSteps;
     const int e = barEnergy(s, bar);
-    const int before = bar == 0 ? 0 : barEnergy(s, bar - 1);
 
-    if (e < 2)
-    {
-        if (pos == 0 && before >= 2)
-            h.off = true; // the lead stops where the music drops
-        return h;
-    }
-
+    // (the lead is hushed in the intro and the breakdown: only the main notes of the style, which
+    // kLeadMinWeight lets through at energy 1; the busier notes come with the build)
     const int mut = mutationTenths(s);
     const int weight = weightOf(st.lead, pos);
     const uint32_t key = motifKey(s, bar);
@@ -847,6 +859,8 @@ Event leadEvent(const Setup& s, uint16_t offset)
 
     int v = 98 + (pos % 4 == 0 ? 10 : (pos % 2 == 1 ? -10 : 0));
     v -= (4 - e) * 3;
+    if (e < 2)
+        v -= 14; // hushed in the intro and the breakdown
     v -= rnd(s, 134, static_cast<uint32_t>(offset), 0) % 12;
     ev.on = true;
     ev.velocity = static_cast<uint8_t>(clampInt(v, 30, 127));
@@ -917,6 +931,13 @@ int chordRoot(const Setup& s, int bar)
 int chordLength(const Setup& s)
 {
     return chordBarsOf(s, styles[s.style % kStyleCount]);
+}
+
+bool isBreakBar(const Setup& s, int bar)
+{
+    if (bar < 0 || bar >= barCount(s))
+        return false;
+    return isBreakPhrase(bar / kPhraseBars, phraseCount(s));
 }
 
 int barEnergy(const Setup& s, int bar)
