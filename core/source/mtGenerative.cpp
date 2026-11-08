@@ -303,6 +303,42 @@ int noteOfDegree(const Setup& s, const Scale& sc, int degree)
     return note;
 }
 
+// The chord roots of an algo song: four chords made up from the seed out of a palette that fits
+// the style. Gentle stays with the chords of the style, Normal adds the fourth and the fifth,
+// Wild may use every degree of the scale. The first chord is mostly the key note, and a chord is
+// never repeated right after itself.
+int algoProgDegree(const Setup& s, const Style& st, int slot)
+{
+    unsigned palette = 1u;
+    for (int i = 0; i < 4; i++)
+        palette |= 1u << (st.prog[i] % 7);
+    const int ev = evolveIndex(s);
+    if (ev == kNormal)
+        palette |= (1u << 3) | (1u << 4);
+    else if (ev == kWild)
+        palette = 0x7Fu;
+
+    int previous = -1;
+    int degree = 0;
+    for (int i = 0; i <= slot && i < 4; i++)
+    {
+        int candidates[7];
+        int count = 0;
+        for (int d = 0; d < 7; d++)
+        {
+            if ((palette & (1u << d)) != 0 && d != previous)
+                candidates[count++] = d;
+        }
+        if (count == 0)
+            candidates[count++] = previous < 0 ? 0 : previous;
+        degree = candidates[rnd(s, 240, static_cast<uint32_t>(i), 0) % count];
+        if (i == 0 && rnd(s, 241, 0, 0) * 100 / 256 < 75)
+            degree = 0;
+        previous = degree;
+    }
+    return degree;
+}
+
 int chordDegree(const Setup& s, const Style& st, int bar, int barsPerChord)
 {
     const int index = bar / barsPerChord;
@@ -313,14 +349,25 @@ int chordDegree(const Setup& s, const Style& st, int bar, int barsPerChord)
         if (rnd(s, 60, static_cast<uint32_t>(index), 0) < chance[evolveIndex(s)])
             slot = (slot + 1 + rnd(s, 61, static_cast<uint32_t>(index), 0) % 3) % 4;
     }
-    return st.prog[slot];
+    return s.algo ? algoProgDegree(s, st, slot) : st.prog[slot];
 }
 
 // Every melodic part reads its chord from here, so a bassline, pads and a lead of one style and
 // one song always change chord in the same bar and agree on which chord it is.
 int chordBarsOf(const Setup& s, const Style& st)
 {
-    return st.progBars * (evolveIndex(s) == kGentle ? 2 : 1);
+    int bars = st.progBars;
+    if (s.algo)
+    {
+        // an algo song also picks how fast its chords change: as the style says, twice as long
+        // or half as long
+        const int pick = rnd(s, 242, 0, 0) % 4;
+        if (pick == 2)
+            bars = bars * 2 > 4 ? 4 : bars * 2;
+        else if (pick == 3 && bars >= 2)
+            bars = bars / 2;
+    }
+    return bars * (evolveIndex(s) == kGentle ? 2 : 1);
 }
 
 int chordAt(const Setup& s, const Style& st, int bar)
@@ -336,6 +383,110 @@ constexpr uint8_t kLaneVelocity[kDrumLanes] = { 118, 112, 90, 100, 84, 110 };
 // how much a not-quite-sure hit (digit 1..8) counts per energy level (of 255 per digit)
 constexpr uint8_t kGain[5] = { 0, 10, 20, 30, 40 };
 
+// ---------------------------------------------------------------------------------------------
+// The skeleton of a part: which steps of a bar it plays and how sure it is about them. A classic
+// song takes it from the style as it is written above. An algo song makes it up from the seed: the
+// core of the style stays (the kick on the beat, the backbeat, the first main note of the bass, the
+// first two of the lead, so the style is still recognisable), and every other step is thrown away or
+// re-rolled with a chance, the more so the wilder the piece. The chance of a new hit follows the
+// kind of step (on the beat, an eighth off the beat, a sixteenth) and how dense the style's own
+// pattern is, so a sparse style stays sparse. The skeleton changes now and then during the piece
+// (every 16, 8 or 4 bars for Gentle, Normal and Wild), so an algo piece does not loop one bar.
+constexpr int kPartBass = 6;
+constexpr int kPartLead = 7;
+
+const char* partPattern(const Style& st, int part)
+{
+    return part < kDrumLanes ? st.drums[part] : (part == kPartBass ? st.bass : st.lead);
+}
+
+int percentOf(const Setup& s, uint32_t salt, uint32_t a, uint32_t b)
+{
+    return rnd(s, salt, a, b) * 100 / 256;
+}
+
+int firstPillar(const char* pattern)
+{
+    for (int i = 0; i < kBarSteps; i++)
+    {
+        if (weightOf(pattern, i) >= 9)
+            return i;
+    }
+    return -1;
+}
+
+bool isCoreStep(const Style& st, int part, int pos)
+{
+    const char* pattern = partPattern(st, part);
+    if (weightOf(pattern, pos) < (part == 1 ? 7 : 9)) // (a snare of 7 is a backbeat too)
+        return false;
+    switch (part)
+    {
+        case 0: return (pos % 4) == 0; // the kick on the beat
+        case 1: return true;           // the backbeat
+        case kPartBass: return pos == firstPillar(pattern);
+        case kPartLead: // the first two main notes
+        {
+            const int first = firstPillar(pattern);
+            if (pos == first)
+                return true;
+            for (int i = first + 1; i < kBarSteps; i++)
+            {
+                if (weightOf(pattern, i) >= 9)
+                    return i == pos;
+            }
+            return false;
+        }
+        default: return false;
+    }
+}
+
+int skeletonWeight(const Setup& s, const Style& st, int part, int pos, int bar)
+{
+    const char* pattern = partPattern(st, part);
+    const int original = weightOf(pattern, pos);
+    if (!s.algo || part < 0 || part > kPartLead || part == 5)
+        return original;
+    if (isCoreStep(st, part, pos))
+        return 9;
+
+    const int ev = evolveIndex(s);
+    static const uint8_t epochBars[kEvolveCount] = { 16, 8, 4 };
+    static const uint8_t changePercent[kEvolveCount] = { 50, 70, 85 };
+    static const uint8_t busyPercent[kEvolveCount] = { 70, 100, 140 };
+    const uint32_t epoch = static_cast<uint32_t>(bar / epochBars[ev]);
+    const uint32_t step = static_cast<uint32_t>(pos);
+    const uint32_t partKey = static_cast<uint32_t>(part);
+
+    if (percentOf(s, 200 + partKey, step, epoch) >= changePercent[ev])
+        return original; // this step keeps what the style has
+
+    // a new decision: chance (%) of a hit on the beat, off the beat (eighth) and a sixteenth
+    static const uint8_t chance[8][3] = { { 20, 25, 12 },  // kick
+                                          { 6, 10, 12 },   // snare, clap
+                                          { 70, 60, 45 },  // closed hat
+                                          { 10, 30, 10 },  // open hat
+                                          { 15, 22, 20 },  // percussion
+                                          { 0, 0, 0 },     // (the cymbal is placed by the energy)
+                                          { 35, 35, 18 },  // bass
+                                          { 40, 30, 14 } }; // lead
+    static const uint8_t pillar[8] = { 20, 10, 25, 15, 10, 0, 35, 40 }; // chance (%) of a sure hit
+    const int cls = (pos % 4) == 0 ? 0 : ((pos % 2) == 0 ? 1 : 2);
+    int count = 0;
+    for (int i = 0; i < kBarSteps; i++)
+    {
+        if (weightOf(pattern, i) > 0)
+            count++;
+    }
+    const int density = 30 + count * 140 / kBarSteps; // percent of the table: 30 (empty) .. 170 (full)
+    const int p = chance[part][cls] * density / 100 * busyPercent[ev] / 100;
+    if (percentOf(s, 210 + partKey, step, epoch) >= p)
+        return 0;
+    if (percentOf(s, 220 + partKey, step, epoch) < pillar[part])
+        return 9;
+    return 2 + rnd(s, 230 + partKey, step, epoch) % 6; // 2..7
+}
+
 Event drumEvent(const Setup& s, uint8_t lane, uint16_t offset)
 {
     Event ev;
@@ -348,7 +499,7 @@ Event drumEvent(const Setup& s, uint8_t lane, uint16_t offset)
     const int mut = mutationTenths(s);
     const bool fill = isFillBar(s, bar);
     bool on = false;
-    int weight = weightOf(st.drums[lane], pos);
+    int weight = skeletonWeight(s, st, lane, pos, bar);
 
     if (lane == 5)
     {
@@ -453,7 +604,7 @@ Hit bassHit(const Setup& s, const Style& st, uint16_t offset, bool* pickup)
         return h;
     }
 
-    const int weight = weightOf(st.bass, pos);
+    const int weight = skeletonWeight(s, st, kPartBass, pos, bar);
     if (weight >= 9)
         h.on = true;
     else if (weight > 0)
@@ -555,7 +706,7 @@ Hit leadHit(const Setup& s, const Style& st, uint16_t offset)
     // (the lead is hushed in the intro and the breakdown: only the main notes of the style, which
     // kLeadMinWeight lets through at energy 1; the busier notes come with the build)
     const int mut = mutationTenths(s);
-    const int weight = weightOf(st.lead, pos);
+    const int weight = skeletonWeight(s, st, kPartLead, pos, bar);
     const uint32_t key = motifKey(s, bar);
     if (weight >= 9)
     {
@@ -918,6 +1069,14 @@ uint16_t songSeed(int style, int song)
     return v == 0 ? 1 : v;
 }
 
+uint16_t algoSeed(int style, int song)
+{
+    const uint32_t h =
+      hash32(static_cast<uint32_t>(style) + 3u, static_cast<uint32_t>(song) + 29u, 0x5A17u, 191u);
+    const uint16_t v = static_cast<uint16_t>(h >> 16);
+    return v == 0 ? 1 : v;
+}
+
 int songStyle(int song)
 {
     return static_cast<int>(hash32(static_cast<uint32_t>(song) + 5u, 0x51u, 0x7Au, 3u) >> 8) % kStyleCount;
@@ -931,6 +1090,11 @@ int chordRoot(const Setup& s, int bar)
 int chordLength(const Setup& s)
 {
     return chordBarsOf(s, styles[s.style % kStyleCount]);
+}
+
+int skeletonWeightOf(const Setup& s, int part, int pos, int bar)
+{
+    return skeletonWeight(s, styles[s.style % kStyleCount], part, pos, bar);
 }
 
 bool isBreakBar(const Setup& s, int bar)

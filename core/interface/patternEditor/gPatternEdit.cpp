@@ -967,17 +967,25 @@ void cPatternEditor::refreshFillTo()
 
     if (isFillGenerative())
     {
-        // the last place is the song: 0 = a new one every time, 1.. the same song for every part
+        // the last place is the song: Random (one of the classic songs), Algo (a new piece made up
+        // from the style), Last (the previous song again), 1.. the classic songs (the same song
+        // for every part), A1.. the algo songs
         const int16_t song = fillData[fillIdx].song;
-        if (song <= 0)
+        if (song == Sequencer::kSongRandom)
             snprintf(fillText2, sizeof(fillText2), "Random");
+        else if (song == Sequencer::kSongAlgo)
+            snprintf(fillText2, sizeof(fillText2), "Algo");
+        else if (song == Sequencer::kSongLast)
+            snprintf(fillText2, sizeof(fillText2), "Last");
+        else if (song < Sequencer::kSongAlgoFirst)
+            snprintf(fillText2, sizeof(fillText2), "%d", song - Sequencer::kSongFirst + 1);
         else
-            snprintf(fillText2, sizeof(fillText2), "%d", song);
+            snprintf(fillText2, sizeof(fillText2), "A%d", song - Sequencer::kSongAlgoFirst + 1);
         display.setControlText(label[5], "Song");
         display.setControlText2(label[5], fillText2);
         display.refreshControl(label[5]);
 
-        display.setControlValue(val2PopupBar, (song * 100) / Sequencer::kGenerativeSongs);
+        display.setControlValue(val2PopupBar, (song * 100) / (Sequencer::kSongValues - 1));
         display.refreshControl(val2PopupBar);
         display.setControlData(intstrumentsToPopupListControl, &fillEmptyList);
         display.setControlValue(intstrumentsToPopupListControl, -1);

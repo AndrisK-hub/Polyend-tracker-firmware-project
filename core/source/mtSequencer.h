@@ -958,9 +958,14 @@ class Sequencer
     // sparse intro, a build, a groove, a breakdown for long selections, a peak and an outro, in
     // phrases of four bars (one bar = 16 steps), with a fill at the end of every phrase. The
     // 'style' (1..getGenerativeStyleCount(), 0 = Random) sets the rhythm and the chords, 'evolve'
-    // (0 Gentle, 1 Normal, 2 Wild) how fast the part changes. 'song' (1..kGenerativeSongs) picks
-    // one of the songs of a style: parts filled with the same style, song, evolve, scale and
-    // length belong together (same form, same chords). Song 0 is a new random song every time.
+    // (0 Gentle, 1 Normal, 2 Wild) how fast the part changes, and how far an algo song goes.
+    // 'song' is the value of the Song setting (kSong...): a classic song 1..kGenerativeSongs
+    // (the grooves and chords of the style with the variations of that song) or an algo song
+    // (the grooves, the bass and lead rhythms and the chords are made up from the seed, the core
+    // of the style stays). Parts filled with the same style, song, evolve, scale and length
+    // belong together (same form, same chords). kSongRandom picks a classic song, kSongAlgo makes
+    // up a new algo song, kSongLast repeats the song of the previous generative fill (so a bass or a lead filled next
+    // belongs to the drums, also when those came from Random or Algo).
     // Every track of the selection gets one voice of the part, in the order of the Drums beats: a
     // drum set (kick, snare, closed hat, open hat, percussion, cymbal), the ambient pads (up to
     // four), one bassline or one lead (first track). The steps of those tracks are rewritten: the
@@ -976,9 +981,25 @@ class Sequencer
     static bool isGenerativeFillAvailable(); // false on the products without the generator
     static int16_t getGenerativeStyleCount();
     static const char* getGenerativeStyleName(int16_t style); // 0 = "Random"
-    static constexpr int16_t kGenerativeSongs = 99;
-    // Random -> a random style; with a song number the same style every time
-    static int16_t resolveGenerativeStyle(int16_t style, int16_t song = 0);
+    static constexpr int16_t kGenerativeSongs = 99; // classic songs, and algo songs, per style
+    // the values of the Song setting
+    static constexpr int16_t kSongRandom = 0; // a classic song picked at random
+    static constexpr int16_t kSongAlgo = 1;   // a new algo song made up on the spot
+    static constexpr int16_t kSongLast = 2;   // the song of the previous generative fill
+    static constexpr int16_t kSongFirst = 3;  // + n - 1: classic song n
+    static constexpr int16_t kSongAlgoFirst = kSongFirst + kGenerativeSongs; // + n - 1: algo song n
+    static constexpr int16_t kSongValues = kSongAlgoFirst + kGenerativeSongs;
+    // a song as the fill uses it
+    struct strGenerativeSong
+    {
+        bool valid = false;
+        bool algo = false;
+        uint16_t seed = 1;
+        uint8_t style = 0; // 0 .. getGenerativeStyleCount() - 1
+    };
+    strGenerativeSong lastGenerativeSong; // for kSongLast; not saved
+    // the song a 'song' value and a 'style' (0 = Random) stand for
+    strGenerativeSong pickGenerativeSong(int16_t style, int16_t song);
     void fillGenerative(int16_t fillStep,
                         int16_t scale,
                         int16_t note,

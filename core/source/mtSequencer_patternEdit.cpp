@@ -605,19 +605,57 @@ const char* Sequencer::getGenerativeStyleName(int16_t style)
     return gen::styleName(style - 1);
 }
 
-int16_t Sequencer::resolveGenerativeStyle(int16_t style, int16_t song)
-{
-    if (style < 1)
-    {
-        // a numbered song always gets the same style, so that all its parts agree
-        if (song >= 1)
-            return static_cast<int16_t>(gen::songStyle(song) + 1);
-        return static_cast<int16_t>(utilMathRandom::random(1, gen::kStyleCount + 1));
-    }
-    return style > gen::kStyleCount ? gen::kStyleCount : style;
-}
-
 static_assert(Sequencer::kGenerativeSongs == gen::kSongCount, "the song numbers of the editor and the generator");
+static_assert(Sequencer::kGenerativeSongs == gen::kAlgoSongCount, "the algo song numbers of the editor and the generator");
+
+Sequencer::strGenerativeSong Sequencer::pickGenerativeSong(int16_t style, int16_t slot)
+{
+    strGenerativeSong pick;
+    pick.valid = true;
+    slot = static_cast<int16_t>(clamp<int>(slot, 0, kSongValues - 1));
+
+    // the style of the popup; 'Random' is left to the song
+    const int styleChoice = style < 1 ? -1 : clamp<int>(style, 1, gen::kStyleCount) - 1;
+
+    if (slot == kSongLast)
+    {
+        if (lastGenerativeSong.valid)
+        {
+            // the same piece again; a style chosen in the popup still wins
+            pick = lastGenerativeSong;
+            if (styleChoice >= 0)
+                pick.style = static_cast<uint8_t>(styleChoice);
+            return pick;
+        }
+        slot = kSongRandom; // nothing to repeat yet
+    }
+
+    if (slot == kSongAlgo)
+    {
+        // a new piece every time: a random seed (and a random style if none is chosen)
+        pick.algo = true;
+        pick.style = static_cast<uint8_t>(
+          styleChoice >= 0 ? styleChoice : utilMathRandom::random(0, gen::kStyleCount));
+        pick.seed = static_cast<uint16_t>(utilMathRandom::random(1, 65536));
+        return pick;
+    }
+
+    int number;
+    if (slot == kSongRandom)
+        number = static_cast<int>(utilMathRandom::random(1, kGenerativeSongs + 1));
+    else if (slot < kSongAlgoFirst)
+        number = slot - kSongFirst + 1;
+    else
+    {
+        number = slot - kSongAlgoFirst + 1;
+        pick.algo = true;
+    }
+
+    // a numbered song always gets the same style, so that all its parts agree
+    pick.style = static_cast<uint8_t>(styleChoice >= 0 ? styleChoice : gen::songStyle(number));
+    pick.seed = pick.algo ? gen::algoSeed(pick.style, number) : gen::songSeed(pick.style, number);
+    return pick;
+}
 
 void Sequencer::fillGenerative(
   int16_t fillStep, int16_t scale, int16_t note, int16_t style, int16_t evolve, int16_t song)
@@ -628,15 +666,16 @@ void Sequencer::fillGenerative(
     if (!isSelectionCorrect(sel))
         return;
 
-    const int16_t songNumber = static_cast<int16_t>(clamp<int>(song, 0, kGenerativeSongs));
+    // a numbered song is always the same piece, so that a drum part, a bassline and a lead filled
+    // one after the other fit together; Random and Algo make a new piece (and 'Last' repeats it)
+    const strGenerativeSong picked = pickGenerativeSong(style, song);
+    lastGenerativeSong = picked;
     gen::Setup setup;
     setup.mode = static_cast<uint8_t>(fillStep - fillStepGenDrums);
-    setup.style = static_cast<uint8_t>(resolveGenerativeStyle(style, songNumber) - 1);
+    setup.style = picked.style;
+    setup.algo = picked.algo ? 1 : 0;
     setup.evolve = static_cast<uint8_t>(clamp<int>(evolve, 0, gen::kEvolveCount - 1));
-    // a numbered song is always the same piece, so that a drum part, a bassline and a lead filled
-    // one after the other fit together; song 0 is a new piece every time
-    setup.seed = songNumber >= 1 ? gen::songSeed(setup.style, songNumber) :
-                                   static_cast<uint16_t>(utilMathRandom::random(1, 65536));
+    setup.seed = picked.seed;
     setup.length = static_cast<uint16_t>(sel->lastStep - sel->firstStep + 1);
     setup.root = static_cast<uint8_t>(mtProject.values.padBoardRootNote % 12);
     setup.scale = static_cast<uint8_t>(clamp<int>(scale, 0, MAX_SCALE));
@@ -655,7 +694,7 @@ void Sequencer::fillGenerative(
 
         // a drum kit loaded in the order of the instrument list plays right away: every lane
         // takes the next instrument (not on MIDI tracks and not on a PERC drum synth)
-        const int16_t instrumentStep = (drums && isSampleTrack(t) && !perc) ? lane : 0;
+        const int16_t instrumentStep = static_cast<int16_t>((drums && isSampleTrack(t) && !perc) ? lane : 0);
         const uint8_t instrument = changeInstrumentInSpecificOrder(
           mtProject.values.lastUsedInstrument, instrumentStep, !isSampleTrack(t));
         const bool percNotes = drums && isDrumSynthInstrument(instrument);
@@ -741,9 +780,9 @@ const char* Sequencer::getGenerativeStyleName(int16_t)
     return "Random";
 }
 
-int16_t Sequencer::resolveGenerativeStyle(int16_t style, int16_t)
+Sequencer::strGenerativeSong Sequencer::pickGenerativeSong(int16_t, int16_t)
 {
-    return style;
+    return strGenerativeSong();
 }
 
 void Sequencer::fillGenerative(int16_t, int16_t, int16_t, int16_t, int16_t, int16_t)

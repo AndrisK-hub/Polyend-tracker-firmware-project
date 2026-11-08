@@ -167,7 +167,7 @@ void cPatternEditor::initExternalRamState()
         fillData[i].density[Sequencer::fillStepGenAmbient] = 1;
         fillData[i].density[Sequencer::fillStepGenBass] = 1;
         fillData[i].density[Sequencer::fillStepGenLead] = 1;
-        fillData[i].song = 1;
+        fillData[i].song = Sequencer::kSongFirst; // song 1
         fillData[i].fillStep = Sequencer::fillStepByStep;
     }
     fillData[5].from = 50;
@@ -1570,10 +1570,10 @@ void cPatternEditor::changeFillData(int16_t value, bool rollListOver)
         case 3: // to
             if (isFillGenerative())
             {
-                // the song: 0 = a new one every time, 1.. = the same song for every part
+                // the song: Random, Algo, Last, the classic songs 1.., the algo songs A1..
                 ptrVal = &fillData[fillIdx].song;
                 min = 0;
-                max = Sequencer::kGenerativeSongs;
+                max = Sequencer::kSongValues - 1;
                 break;
             }
             if (fillData[fillIdx].type == 0)
@@ -1715,7 +1715,7 @@ void cPatternEditor::changneFillDataByPad(uint8_t pad)
         {
             if (isFillGenerative())
             {
-                fillData[fillIdx].song = pad; // pad 0 = a new song every time
+                fillData[fillIdx].song = pad; // pad 0 Random, 1 Algo, 2 Last, then songs 1..
             }
             else if (editParam == EditNote)
             {

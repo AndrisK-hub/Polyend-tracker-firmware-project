@@ -46,7 +46,8 @@ constexpr int kAmbientVoices = 4;
 constexpr int kBassVoices = 1;
 constexpr int kLeadVoices = 1;
 constexpr int kMicroStepsPerStep = 48; // the unit of Event::length
-constexpr int kSongCount = 99;         // songs 1..99 per style; 0 means a new random one every time
+constexpr int kSongCount = 99;         // classic songs 1..99 per style
+constexpr int kAlgoSongCount = 99;     // algo songs 1..99 per style
 
 struct Setup
 {
@@ -58,6 +59,10 @@ struct Setup
     uint8_t root = 0;        // pitch class of the key (0 = C)
     uint8_t scale = 0;       // index into scaleDef; Chromatic uses the style's own scale
     int16_t anchor = 60;     // melodic parts: the note the lowest voice is built on
+    // 0 = a classic song: the grooves and the chords of the style as they are written. 1 = an algo
+    // song: the grooves, the bass and lead rhythms and the chords are made up from the seed (the
+    // core of the style stays); how far it goes follows 'evolve'.
+    uint8_t algo = 0;
 };
 
 struct Event
@@ -80,6 +85,8 @@ Event stepEvent(const Setup& setup, uint8_t lane, uint16_t offset);
 
 // The seed of a song: the same style and song number always give the same seed.
 uint16_t songSeed(int style, int song);
+// The same for an algo song (the seed makes up the grooves and the chords, see Setup::algo).
+uint16_t algoSeed(int style, int song);
 // The style a 'Random' style stands for in a given song (so that every part of the song agrees).
 int songStyle(int song);
 // The chord (the scale degree of its root, 0 = the key note) that the bassline, the pads and the
@@ -90,6 +97,10 @@ int chordLength(const Setup& setup);
 
 // helpers that the tests and the editor share
 int barEnergy(const Setup& setup, int bar); // 1 (intro, breakdown) .. 4 (peak)
+// How sure a part is about a step of the bar (0 = never, 1..8 = comes and goes, 9 = always): the
+// skeleton the part is built on. Parts: 0..4 the drum lanes, 6 the bass, 7 the lead. A classic song
+// reads it from the style, an algo song makes it up (see Setup::algo). For tests and tools.
+int skeletonWeightOf(const Setup& setup, int part, int pos, int bar);
 // true in the bars of the breakdown (selections of 6 phrases = 24 bars and more)
 bool isBreakBar(const Setup& setup, int bar);
 bool isFillBar(const Setup& setup, int bar);
