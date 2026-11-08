@@ -67,17 +67,18 @@ const char* ptrfillScaleFilterNames[fillScaleFilterCount] = {
     &fillScaleFilterLabels[1][0],
 };
 //------------------------------------------------------------
-static const uint8_t fillStepCount = 12;
+static const uint8_t fillStepCount = 14;
 static_assert(fillStepCount == Sequencer::fillStepEnd__, "one name for every fill step rule");
 const char fillStepLabels[fillStepCount][11] = {
     "Note",  "No Note", "Fx",       "No Fx",    "Random",   "Each",
-    "Euclidean", "Drums", "Gen Drum", "Gen Ambi", "Gen Bass", "Gen Lead",
+    "Euclidean", "Drums", "Gen Song", "Algo Song", "Gen Drum", "Gen Ambi", "Gen Bass", "Gen Lead",
 };
 
 const char* ptrfillStepNames[fillStepCount] = {
     &fillStepLabels[0][0], &fillStepLabels[1][0], &fillStepLabels[2][0], &fillStepLabels[3][0],
     &fillStepLabels[4][0], &fillStepLabels[5][0], &fillStepLabels[6][0], &fillStepLabels[7][0],
     &fillStepLabels[8][0], &fillStepLabels[9][0], &fillStepLabels[10][0], &fillStepLabels[11][0],
+    &fillStepLabels[12][0], &fillStepLabels[13][0],
 };
 //------------------------------------------------------------
 
@@ -612,7 +613,8 @@ void cPatternEditor::showFillPopup()
     frameData.places[7] = &framesPopupPlaces[7][0];
 
     // step
-    fillStepList.linesCount = fillStepCount;
+    // (13 lines fit in the popup, as in the Fx list; a longer list scrolls)
+    fillStepList.linesCount = fillStepCount < 13 ? fillStepCount : 13;
     fillStepList.start = fillData[fillIdx].fillStep;
     fillStepList.length = fillStepListLength();
     fillStepList.data = (char**)(&ptrfillStepNames);
@@ -800,7 +802,8 @@ void cPatternEditor::refreshFillType()
         {
             // drums: the note of the sample drums; bass and pads: where the part sits
             display.setControlText(label[4],
-                                   fillData[fillIdx].fillStep == Sequencer::fillStepGenAmbient ||
+                                   Sequencer::isSongFill(fillData[fillIdx].fillStep) ||
+                                       fillData[fillIdx].fillStep == Sequencer::fillStepGenAmbient ||
                                        fillData[fillIdx].fillStep == Sequencer::fillStepGenBass ||
                                        fillData[fillIdx].fillStep == Sequencer::fillStepGenLead
                                      ? "Register"
@@ -970,22 +973,30 @@ void cPatternEditor::refreshFillTo()
         // the last place is the song: Random (one of the classic songs), Algo (a new piece made up
         // from the style), Last (the previous song again), 1.. the classic songs (the same song
         // for every part), A1.. the algo songs
-        const int16_t song = fillData[fillIdx].song;
+        // Gen Song offers the classic songs only, Algo Song the made up ones only: a value of the
+        // other kind (left from another fill step) stands for the one of the same number
+        const Sequencer::enSongKind kind = Sequencer::songKindOf(fillData[fillIdx].fillStep);
+        const int16_t index = Sequencer::songIndexOf(kind, fillData[fillIdx].song);
+        const int16_t song = Sequencer::songValueAt(kind, index);
+        fillData[fillIdx].song = song;
         if (song == Sequencer::kSongRandom)
             snprintf(fillText2, sizeof(fillText2), "Random");
         else if (song == Sequencer::kSongAlgo)
-            snprintf(fillText2, sizeof(fillText2), "Algo");
+            snprintf(fillText2, sizeof(fillText2), "New Algo");
         else if (song == Sequencer::kSongLast)
             snprintf(fillText2, sizeof(fillText2), "Last");
         else if (song < Sequencer::kSongAlgoFirst)
-            snprintf(fillText2, sizeof(fillText2), "%d", song - Sequencer::kSongFirst + 1);
+            snprintf(fillText2, sizeof(fillText2), "Song %d", song - Sequencer::kSongFirst + 1);
         else
-            snprintf(fillText2, sizeof(fillText2), "A%d", song - Sequencer::kSongAlgoFirst + 1);
+            snprintf(fillText2, sizeof(fillText2), "Algo %d", song - Sequencer::kSongAlgoFirst + 1);
         display.setControlText(label[5], "Song");
         display.setControlText2(label[5], fillText2);
+        // the text of a label is only drawn when its value is set (as in all the other places)
+        display.setControlValue(label[5], 1);
         display.refreshControl(label[5]);
 
-        display.setControlValue(val2PopupBar, (song * 100) / (Sequencer::kSongValues - 1));
+        const int16_t lastIndex = Sequencer::songListLength(kind) - 1;
+        display.setControlValue(val2PopupBar, (index * 100) / lastIndex);
         display.refreshControl(val2PopupBar);
         display.setControlData(intstrumentsToPopupListControl, &fillEmptyList);
         display.setControlValue(intstrumentsToPopupListControl, -1);
@@ -1148,6 +1159,8 @@ void cPatternEditor::refreshFillDensity()
                          Sequencer::getDrumPatternName(pattern));
             }
             break;
+        case Sequencer::fillStepGenSong:
+        case Sequencer::fillStepAlgoSong:
         case Sequencer::fillStepGenDrums:
         case Sequencer::fillStepGenAmbient:
         case Sequencer::fillStepGenBass:
@@ -1197,10 +1210,13 @@ void cPatternEditor::refreshFillStep()
     // a generative part sits at a register: bring a very low note up to something playable
     if (isFillGenerative() && fillData[fillIdx].from < 24)
     {
-        // bass low, pads in the middle, the lead above them
+        // bass low, pads in the middle, the lead above them (a song: the register of its lead)
         fillData[fillIdx].from = (fillData[fillIdx].fillStep == Sequencer::fillStepGenBass) ?
                                    48 :
-                                   ((fillData[fillIdx].fillStep == Sequencer::fillStepGenLead) ? 72 : 60);
+                                   ((fillData[fillIdx].fillStep == Sequencer::fillStepGenLead ||
+                                     Sequencer::isSongFill(fillData[fillIdx].fillStep)) ?
+                                      72 :
+                                      60);
     }
 
     refreshFillTypeList();
@@ -1257,7 +1273,7 @@ int16_t cPatternEditor::fillStepListLength() const
 {
     return (editParam == EditNote && Sequencer::isGenerativeFillAvailable())
              ? static_cast<int16_t>(Sequencer::fillStepEnd__)
-             : static_cast<int16_t>(Sequencer::fillStepGenDrums);
+             : static_cast<int16_t>(Sequencer::fillStepGenSong);
 }
 
 void cPatternEditor::hideFillPopup()

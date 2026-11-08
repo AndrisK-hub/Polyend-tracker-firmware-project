@@ -62,10 +62,13 @@ class Sequencer
         fillStepByStep,
         fillStepEuclidean,
         fillStepDrums,
-        // Generative parts (Tracker Mini): a whole drum, ambient, bass or lead part that evolves
-        // over the selection. They write notes, instruments and volumes by themselves, so they
-        // are only offered when the notes are filled (see fillGenerative()). The order is the
-        // order of the modes of the generator (gen::Mode).
+        // Generative parts (Tracker Mini): a whole song, or a drum, ambient, bass or lead part
+        // that evolves over the selection. They write notes, instruments and volumes by
+        // themselves, so they are only offered when the notes are filled (see fillGenerative()).
+        // A song fills the selected tracks in turn with a lead, a bassline and then the drums.
+        // The order of the parts is the order of the modes of the generator (gen::Mode).
+        fillStepGenSong,  // a song of the classic presets of the style
+        fillStepAlgoSong, // a song that is made up, without any preset
         fillStepGenDrums,
         fillStepGenAmbient,
         fillStepGenBass,
@@ -976,7 +979,11 @@ class Sequencer
     // keeps them in tune.
     static bool isGenerativeFill(int16_t fillStep)
     {
-        return fillStep >= fillStepGenDrums && fillStep < fillStepEnd__;
+        return fillStep >= fillStepGenSong && fillStep < fillStepEnd__;
+    }
+    static bool isSongFill(int16_t fillStep)
+    {
+        return fillStep == fillStepGenSong || fillStep == fillStepAlgoSong;
     }
     static bool isGenerativeFillAvailable(); // false on the products without the generator
     static int16_t getGenerativeStyleCount();
@@ -998,8 +1005,51 @@ class Sequencer
         uint8_t style = 0; // 0 .. getGenerativeStyleCount() - 1
     };
     strGenerativeSong lastGenerativeSong; // for kSongLast; not saved
-    // the song a 'song' value and a 'style' (0 = Random) stand for
-    strGenerativeSong pickGenerativeSong(int16_t style, int16_t song);
+    // The values a fill step offers for the Song setting, in the order the encoder steps through
+    // them: a part has all of them, Gen Song only the classic ones (Random, Last, 1..), Algo Song
+    // only the made up ones (Algo, Last, A1..). A value that the fill step does not offer stands
+    // for the one of the same kind that it does (Algo -> Random, A5 -> 5 and the other way round).
+    enum enSongKind
+    {
+        songKindAny = 0,
+        songKindClassic,
+        songKindAlgo
+    };
+    static enSongKind songKindOf(int16_t fillStep)
+    {
+        return fillStep == fillStepGenSong ?
+                 songKindClassic :
+                 (fillStep == fillStepAlgoSong ? songKindAlgo : songKindAny);
+    }
+    static int16_t songListLength(enSongKind kind)
+    {
+        return kind == songKindAny ? kSongValues : static_cast<int16_t>(2 + kGenerativeSongs);
+    }
+    static int16_t songValueAt(enSongKind kind, int16_t index)
+    {
+        if (kind == songKindAny)
+            return clamp<int16_t>(index, 0, kSongValues - 1);
+        index = clamp<int16_t>(index, 0, songListLength(kind) - 1);
+        if (index == 0)
+            return kind == songKindClassic ? kSongRandom : kSongAlgo;
+        if (index == 1)
+            return kSongLast;
+        return static_cast<int16_t>((kind == songKindClassic ? kSongFirst : kSongAlgoFirst) + index - 2);
+    }
+    static int16_t songIndexOf(enSongKind kind, int16_t value)
+    {
+        if (kind == songKindAny)
+            return clamp<int16_t>(value, 0, kSongValues - 1);
+        if (value == kSongLast)
+            return 1;
+        if (value >= kSongAlgoFirst)
+            return static_cast<int16_t>(2 + value - kSongAlgoFirst);
+        if (value >= kSongFirst)
+            return static_cast<int16_t>(2 + value - kSongFirst);
+        return 0; // Random and Algo
+    }
+    // the song a 'song' value and a 'style' (0 = Random) stand for, as the fill step offers it
+    strGenerativeSong pickGenerativeSong(int16_t style, int16_t song, int16_t fillStep = fillStepGenDrums);
     void fillGenerative(int16_t fillStep,
                         int16_t scale,
                         int16_t note,

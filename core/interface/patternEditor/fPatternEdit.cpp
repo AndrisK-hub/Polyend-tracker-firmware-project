@@ -163,7 +163,9 @@ void cPatternEditor::initExternalRamState()
         fillData[i].density[Sequencer::fillStepRandom] = Sequencer::MAX_FILL_DENSITY / 2;
         fillData[i].density[Sequencer::fillStepByStep] = 1;
         fillData[i].density[Sequencer::fillStepEuclidean] = 3;
-        fillData[i].density[Sequencer::fillStepGenDrums] = 1; // SynthPop
+        fillData[i].density[Sequencer::fillStepGenSong] = 1; // SynthPop
+        fillData[i].density[Sequencer::fillStepAlgoSong] = 1;
+        fillData[i].density[Sequencer::fillStepGenDrums] = 1;
         fillData[i].density[Sequencer::fillStepGenAmbient] = 1;
         fillData[i].density[Sequencer::fillStepGenBass] = 1;
         fillData[i].density[Sequencer::fillStepGenLead] = 1;
@@ -1570,11 +1572,22 @@ void cPatternEditor::changeFillData(int16_t value, bool rollListOver)
         case 3: // to
             if (isFillGenerative())
             {
-                // the song: Random, Algo, Last, the classic songs 1.., the algo songs A1..
-                ptrVal = &fillData[fillIdx].song;
-                min = 0;
-                max = Sequencer::kSongValues - 1;
-                break;
+                // The song: one of the values of the list of this fill step (a part: Random, Algo,
+                // Last, the classic songs 1.. and the algo songs A1..; Gen Song the classic ones
+                // only; Algo Song the made up ones only)
+                const Sequencer::enSongKind kind = Sequencer::songKindOf(fillData[fillIdx].fillStep);
+                const int16_t index = Sequencer::songIndexOf(kind, fillData[fillIdx].song);
+                const int16_t lastIndex = Sequencer::songListLength(kind) - 1;
+                int16_t newIndex;
+                if (index + value < 0)
+                    newIndex = 0;
+                else if (index + value > lastIndex)
+                    newIndex = rollListOver ? 0 : lastIndex;
+                else
+                    newIndex = index + value;
+                fillData[fillIdx].song = Sequencer::songValueAt(kind, newIndex);
+                refreshFillTo();
+                return;
             }
             if (fillData[fillIdx].type == 0)
             {
@@ -1715,7 +1728,10 @@ void cPatternEditor::changneFillDataByPad(uint8_t pad)
         {
             if (isFillGenerative())
             {
-                fillData[fillIdx].song = pad; // pad 0 Random, 1 Algo, 2 Last, then songs 1..
+                // pad 0 is the first value of the list of the fill step (Random or Algo), 1 Last
+                // (a part: 1 Algo, 2 Last), then the songs
+                fillData[fillIdx].song =
+                  Sequencer::songValueAt(Sequencer::songKindOf(fillData[fillIdx].fillStep), pad);
             }
             else if (editParam == EditNote)
             {

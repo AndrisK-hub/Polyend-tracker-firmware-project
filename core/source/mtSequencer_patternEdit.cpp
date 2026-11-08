@@ -608,11 +608,16 @@ const char* Sequencer::getGenerativeStyleName(int16_t style)
 static_assert(Sequencer::kGenerativeSongs == gen::kSongCount, "the song numbers of the editor and the generator");
 static_assert(Sequencer::kGenerativeSongs == gen::kAlgoSongCount, "the algo song numbers of the editor and the generator");
 
-Sequencer::strGenerativeSong Sequencer::pickGenerativeSong(int16_t style, int16_t slot)
+Sequencer::strGenerativeSong Sequencer::pickGenerativeSong(int16_t style,
+                                                           int16_t slot,
+                                                           int16_t fillStep)
 {
     strGenerativeSong pick;
     pick.valid = true;
-    slot = static_cast<int16_t>(clamp<int>(slot, 0, kSongValues - 1));
+    // a value the fill step does not offer stands for the one of the same kind that it does:
+    // Gen Song only knows the classic songs, Algo Song only the made up ones
+    const enSongKind kind = songKindOf(fillStep);
+    slot = songValueAt(kind, songIndexOf(kind, static_cast<int16_t>(clamp<int>(slot, 0, kSongValues - 1))));
 
     // the style of the popup; 'Random' is left to the song
     const int styleChoice = style < 1 ? -1 : clamp<int>(style, 1, gen::kStyleCount) - 1;
@@ -627,7 +632,7 @@ Sequencer::strGenerativeSong Sequencer::pickGenerativeSong(int16_t style, int16_
                 pick.style = static_cast<uint8_t>(styleChoice);
             return pick;
         }
-        slot = kSongRandom; // nothing to repeat yet
+        slot = kind == songKindAlgo ? kSongAlgo : kSongRandom; // nothing to repeat yet
     }
 
     if (slot == kSongAlgo)
@@ -668,10 +673,11 @@ void Sequencer::fillGenerative(
 
     // a numbered song is always the same piece, so that a drum part, a bassline and a lead filled
     // one after the other fit together; Random and Algo make a new piece (and 'Last' repeats it)
-    const strGenerativeSong picked = pickGenerativeSong(style, song);
+    const strGenerativeSong picked = pickGenerativeSong(style, song, fillStep);
     lastGenerativeSong = picked;
     gen::Setup setup;
-    setup.mode = static_cast<uint8_t>(fillStep - fillStepGenDrums);
+    setup.mode = isSongFill(fillStep) ? static_cast<uint8_t>(gen::kLead) :
+                                        static_cast<uint8_t>(fillStep - fillStepGenDrums);
     setup.style = picked.style;
     setup.algo = picked.algo ? 1 : 0;
     setup.evolve = static_cast<uint8_t>(clamp<int>(evolve, 0, gen::kEvolveCount - 1));
@@ -681,22 +687,66 @@ void Sequencer::fillGenerative(
     setup.scale = static_cast<uint8_t>(clamp<int>(scale, 0, MAX_SCALE));
     setup.anchor = static_cast<int16_t>(clamp<int>(note, STEP_NOTE_MIN, STEP_NOTE_MAX));
 
-    const int lanes = gen::laneCount(setup.mode);
-    const bool drums = setup.mode == gen::kDrums;
+    // A song fills the tracks of the selection in turn: the lead (instrument 1), the bassline
+    // (instrument 2), then the drums: kick, snare, closed hat, open hat, percussion, cymbal. The
+    // note chosen is the register of the lead; the bass sits two octaves below it.
+    const bool songFill = isSongFill(fillStep);
+    constexpr int kSongLeadInstrument = 0, kSongBassInstrument = 1, kSongFirstDrumInstrument = 2;
+    constexpr int kSongBassOctaves = 24;
     // drums on a PERC drum synth: the note is the drum; on samples every hit plays the chosen note
     const bool perc = isDrumSynthInstrument(mtProject.values.lastUsedInstrument);
 
     for (uint8_t t = sel->firstTrack; t <= sel->lastTrack; t++)
     {
-        const int lane = t - sel->firstTrack;
+        const int voice = t - sel->firstTrack; // the position in the selection
+        gen::Setup part = setup;
+        int lane = voice;
+        int songInstrument = -1; // the instrument of a song voice, -1 = the one last used
+        if (songFill)
+        {
+            if (voice == 0)
+            {
+                part.mode = gen::kLead;
+                lane = 0;
+                songInstrument = kSongLeadInstrument;
+            }
+            else if (voice == 1)
+            {
+                part.mode = gen::kBass;
+                lane = 0;
+                part.anchor = static_cast<int16_t>(
+                  clamp<int>(setup.anchor - kSongBassOctaves, STEP_NOTE_MIN, STEP_NOTE_MAX));
+                songInstrument = kSongBassInstrument;
+            }
+            else
+            {
+                part.mode = gen::kDrums;
+                lane = voice - 2;
+                part.anchor = STEP_NOTE_DEFAULT; // samples play at their own pitch
+                songInstrument = kSongFirstDrumInstrument + lane;
+            }
+        }
+
+        const int lanes = gen::laneCount(part.mode);
         if (lane >= lanes)
             break; // no voice left for the other tracks, they stay as they are
+        const bool drums = part.mode == gen::kDrums;
 
-        // a drum kit loaded in the order of the instrument list plays right away: every lane
-        // takes the next instrument (not on MIDI tracks and not on a PERC drum synth)
-        const int16_t instrumentStep = static_cast<int16_t>((drums && isSampleTrack(t) && !perc) ? lane : 0);
-        const uint8_t instrument = changeInstrumentInSpecificOrder(
-          mtProject.values.lastUsedInstrument, instrumentStep, !isSampleTrack(t));
+        uint8_t instrument;
+        if (songFill && songInstrument >= 0 && isSampleTrack(t) && !(drums && perc))
+        {
+            // instruments 1 and 2, the drum kit after them in the order of the instrument list
+            instrument = static_cast<uint8_t>(clamp<int>(songInstrument, 0, kSampleInstrumentsCount - 1));
+        }
+        else
+        {
+            // a drum kit loaded in the order of the instrument list plays right away: every lane
+            // takes the next instrument (not on MIDI tracks and not on a PERC drum synth)
+            const int16_t instrumentStep =
+              static_cast<int16_t>((drums && isSampleTrack(t) && !perc) ? lane : 0);
+            instrument = changeInstrumentInSpecificOrder(
+              mtProject.values.lastUsedInstrument, instrumentStep, !isSampleTrack(t));
+        }
         const bool percNotes = drums && isDrumSynthInstrument(instrument);
 
         uint16_t lengths[kPatternMaxSteps] = {}; // melodic parts: length of the note at a step
@@ -704,7 +754,7 @@ void Sequencer::fillGenerative(
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
-            const gen::Event e = gen::stepEvent(setup, static_cast<uint8_t>(lane), offset);
+            const gen::Event e = gen::stepEvent(part, static_cast<uint8_t>(lane), offset);
             if (!drums)
             {
                 // the length of the notes is written in a moment; what an earlier take left in
@@ -725,7 +775,7 @@ void Sequencer::fillGenerative(
                 if (percNotes)
                     step->note = static_cast<int8_t>(gen::drumNote(static_cast<uint8_t>(lane)));
                 else if (drums)
-                    step->note = static_cast<int8_t>(setup.anchor);
+                    step->note = static_cast<int8_t>(part.anchor);
                 else
                     step->note = static_cast<int8_t>(clamp<int>(e.note, STEP_NOTE_MIN, STEP_NOTE_MAX));
                 // the volume of a step is a percentage, the generator speaks in velocities
@@ -735,7 +785,7 @@ void Sequencer::fillGenerative(
             else if (e.off)
             {
                 // the bass is cut, the pads and the lead fade out
-                step->note = setup.mode == gen::kBass ? STEP_NOTE_OFF_CUT : STEP_NOTE_OFF_FADE;
+                step->note = part.mode == gen::kBass ? STEP_NOTE_OFF_CUT : STEP_NOTE_OFF_FADE;
                 step->instrument = instrument;
                 step->volume = STEP_VELO_DEFAULT;
             }
@@ -757,7 +807,7 @@ void Sequencer::fillGenerative(
                     continue;
                 const uint32_t endTick =
                   static_cast<uint32_t>(offset) * gen::kMicroStepsPerStep + lengths[s];
-                if (endTick >= static_cast<uint32_t>(setup.length) * gen::kMicroStepsPerStep)
+                if (endTick >= static_cast<uint32_t>(part.length) * gen::kMicroStepsPerStep)
                     continue;
                 writeNoteLength(t, s, lengths[s], 0);
             }
@@ -780,7 +830,7 @@ const char* Sequencer::getGenerativeStyleName(int16_t)
     return "Random";
 }
 
-Sequencer::strGenerativeSong Sequencer::pickGenerativeSong(int16_t, int16_t)
+Sequencer::strGenerativeSong Sequencer::pickGenerativeSong(int16_t, int16_t, int16_t)
 {
     return strGenerativeSong();
 }
