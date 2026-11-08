@@ -166,6 +166,8 @@ void cPatternEditor::initExternalRamState()
         fillData[i].density[Sequencer::fillStepGenDrums] = 1; // SynthPop
         fillData[i].density[Sequencer::fillStepGenAmbient] = 1;
         fillData[i].density[Sequencer::fillStepGenBass] = 1;
+        fillData[i].density[Sequencer::fillStepGenLead] = 1;
+        fillData[i].song = 1;
         fillData[i].fillStep = Sequencer::fillStepByStep;
     }
     fillData[5].from = 50;
@@ -1566,6 +1568,14 @@ void cPatternEditor::changeFillData(int16_t value, bool rollListOver)
             }
             break;
         case 3: // to
+            if (isFillGenerative())
+            {
+                // the song: 0 = a new one every time, 1.. = the same song for every part
+                ptrVal = &fillData[fillIdx].song;
+                min = 0;
+                max = Sequencer::kGenerativeSongs;
+                break;
+            }
             if (fillData[fillIdx].type == 0)
             {
                 return;
@@ -1703,7 +1713,11 @@ void cPatternEditor::changneFillDataByPad(uint8_t pad)
         }
         case 3: // to
         {
-            if (editParam == EditNote)
+            if (isFillGenerative())
+            {
+                fillData[fillIdx].song = pad; // pad 0 = a new song every time
+            }
+            else if (editParam == EditNote)
             {
                 bool isBeatSlice =
                   mtProject.instrument[mtProject.values.lastUsedInstrument].playMode ==
@@ -1788,7 +1802,8 @@ bool cPatternEditor::isFillPlaceValid(uint8_t place)
     // place 1 not available in some step modes
     return !(((editParam == EditInstr || (isMicVolView && editParam >= EditFx1)) && place == 2) ||
              (fillData[fillIdx].fillStep < Sequencer::fillStepRandom && place == 1) ||
-             ((fillData[fillIdx].type == 0 || isFillGenerative()) && place > 4) ||
+             // the constant fill has no 'To'; the generative parts use the place for the song
+             ((fillData[fillIdx].type == 0 && !isFillGenerative()) && place > 4) ||
              // the generative drums do not follow a scale
              (editParam == EditNote && fillData[fillIdx].fillStep == Sequencer::fillStepGenDrums &&
               place == 2));
@@ -3502,8 +3517,12 @@ static void functFillApply()
                 if (Sequencer::isGenerativeFill(fillData->fillStep))
                 {
                     // density holds the style here (0 = Random), type how fast the part evolves
-                    sequencer.fillGenerative(
-                      fillData->fillStep, fillData->param, fillData->from, density, fillData->type);
+                    sequencer.fillGenerative(fillData->fillStep,
+                                             fillData->param,
+                                             fillData->from,
+                                             density,
+                                             fillData->type,
+                                             fillData->song);
                 }
                 else if (fillData->type == 2)
                 {

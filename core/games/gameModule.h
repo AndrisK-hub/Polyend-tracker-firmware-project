@@ -26,6 +26,9 @@ class cGameModule : public ModuleBase
 
     // called by the buttons while a game is on screen
     void quitRequested();
+    // Menu tap while a game runs: plays a short test beep through the game's sound path and shows
+    // a few numbers about the sound on the picture for a few seconds
+    void soundTest();
 
   private:
     enum State : uint8_t
@@ -39,6 +42,7 @@ class cGameModule : public ModuleBase
     bool loadRom(const char* name);
     void presentFrame();
     void collectSound();
+    void drawSoundInfo();
 
     State state = kStateIdle;
     nes::Console* console = nullptr;
@@ -48,6 +52,14 @@ class cGameModule : public ModuleBase
     uint32_t frameMicros = 0;
     uint32_t lastAudioBlocks = 0;
     uint32_t lastAudioProgressUs = 0;
+
+    // sound test and the numbers it shows
+    uint32_t beepLeft = 0;          // samples of test beep still to add to the game's sound
+    uint32_t beepPhase = 0;
+    uint16_t soundInfoFrames = 0;   // frames the numbers stay on the picture
+    uint32_t lastFrameSamples = 0;  // sound samples the last frame made
+    uint32_t lastPeak = 0;          // loudest of them (before the beep)
+    uint32_t lastFrameUs = 0;       // time the emulator needed for the last frame
 
     hControl titleText = -1;
     hControl detailText = -1;

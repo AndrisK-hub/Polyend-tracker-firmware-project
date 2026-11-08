@@ -1,9 +1,11 @@
-// Generative parts for Fill > Where?: drums, ambient pads and a bassline that evolve over the
-// selected steps (Tracker Mini).
+// Generative parts for Fill > Where?: drums, ambient pads, a bassline and a lead that evolve over
+// the selected steps (Tracker Mini).
 //
 // Everything here is a pure function of (setup, lane, step): no state is kept, so the same setup
-// always gives the same music and every track of one fill agrees on the form (intro, build, break,
-// peak, outro) because they all derive it from the same seed.
+// always gives the same music and every part of one song agrees on the form (intro, build, break,
+// peak, outro) and on the chords, because they all derive them from the same seed. The seed is
+// made from the style and the song number (songSeed()), so a drum part, a bassline and a lead
+// that are filled one after the other with the same style and song belong together.
 //
 // Time: a step is a sixteenth note, a bar is 16 steps and a phrase is 4 bars. The selection is
 // laid out as an arrangement of phrases. Each phrase has an energy from 0 (break) to 4 (peak):
@@ -22,6 +24,7 @@ enum Mode : uint8_t
     kDrums = 0,
     kAmbient,
     kBass,
+    kLead,
     kModeCount
 };
 
@@ -40,6 +43,9 @@ constexpr int kStyleCount = 13;
 constexpr int kDrumLanes = 6;
 constexpr int kAmbientVoices = 4;
 constexpr int kBassVoices = 1;
+constexpr int kLeadVoices = 1;
+constexpr int kMicroStepsPerStep = 48; // the unit of Event::length
+constexpr int kSongCount = 99;         // songs 1..99 per style; 0 means a new random one every time
 
 struct Setup
 {
@@ -59,6 +65,8 @@ struct Event
     bool off = false;       // the voice fades out here (a break)
     uint8_t velocity = 0;   // 1..127 when on
     int16_t note = 0;       // melodic parts: the note
+    // melodic parts: how long the note sounds, in 1/48 of a step. 0 = until the next note.
+    uint16_t length = 0;
 };
 
 const char* styleName(int style);
@@ -68,6 +76,16 @@ int laneCount(uint8_t mode);
 int16_t drumNote(uint8_t lane);
 
 Event stepEvent(const Setup& setup, uint8_t lane, uint16_t offset);
+
+// The seed of a song: the same style and song number always give the same seed.
+uint16_t songSeed(int style, int song);
+// The style a 'Random' style stands for in a given song (so that every part of the song agrees).
+int songStyle(int song);
+// The chord (the scale degree of its root, 0 = the key note) that the bassline, the pads and the
+// lead all follow in this bar.
+int chordRoot(const Setup& setup, int bar);
+// bars a chord lasts in this style (and evolve setting)
+int chordLength(const Setup& setup);
 
 // helpers that the tests and the editor share
 int barEnergy(const Setup& setup, int bar); // 0 (break) .. 4 (peak)

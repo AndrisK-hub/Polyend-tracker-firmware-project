@@ -1416,7 +1416,7 @@ uint8_t audioEngine::getLastUsedVoice()
 
 void audioEngine::setNesSoundEnabled(bool enabled)
 {
-    constexpr float kNesSoundGain = 0.8f;
+    constexpr float kNesSoundGain = 1.5f; // the chip is quiet next to a sample (peaks near -12 dBFS)
     const float gain = enabled ? kNesSoundGain : 0.0f;
     finalMixer[AudioOutput::OutputChannels::kLeft]->gain(
       AudioOutput::FinalMixInputs::kNesEmulatorSound, gain);

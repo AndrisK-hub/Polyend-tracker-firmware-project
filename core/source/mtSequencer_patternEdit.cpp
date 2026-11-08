@@ -605,15 +605,22 @@ const char* Sequencer::getGenerativeStyleName(int16_t style)
     return gen::styleName(style - 1);
 }
 
-int16_t Sequencer::resolveGenerativeStyle(int16_t style)
+int16_t Sequencer::resolveGenerativeStyle(int16_t style, int16_t song)
 {
     if (style < 1)
+    {
+        // a numbered song always gets the same style, so that all its parts agree
+        if (song >= 1)
+            return static_cast<int16_t>(gen::songStyle(song) + 1);
         return static_cast<int16_t>(utilMathRandom::random(1, gen::kStyleCount + 1));
+    }
     return style > gen::kStyleCount ? gen::kStyleCount : style;
 }
 
+static_assert(Sequencer::kGenerativeSongs == gen::kSongCount, "the song numbers of the editor and the generator");
+
 void Sequencer::fillGenerative(
-  int16_t fillStep, int16_t scale, int16_t note, int16_t style, int16_t evolve)
+  int16_t fillStep, int16_t scale, int16_t note, int16_t style, int16_t evolve, int16_t song)
 {
     if (!isGenerativeFill(fillStep))
         return;
@@ -621,11 +628,15 @@ void Sequencer::fillGenerative(
     if (!isSelectionCorrect(sel))
         return;
 
+    const int16_t songNumber = static_cast<int16_t>(clamp<int>(song, 0, kGenerativeSongs));
     gen::Setup setup;
     setup.mode = static_cast<uint8_t>(fillStep - fillStepGenDrums);
-    setup.style = static_cast<uint8_t>(resolveGenerativeStyle(style) - 1);
+    setup.style = static_cast<uint8_t>(resolveGenerativeStyle(style, songNumber) - 1);
     setup.evolve = static_cast<uint8_t>(clamp<int>(evolve, 0, gen::kEvolveCount - 1));
-    setup.seed = static_cast<uint16_t>(utilMathRandom::random(1, 65536)); // a new piece every time
+    // a numbered song is always the same piece, so that a drum part, a bassline and a lead filled
+    // one after the other fit together; song 0 is a new piece every time
+    setup.seed = songNumber >= 1 ? gen::songSeed(setup.style, songNumber) :
+                                   static_cast<uint16_t>(utilMathRandom::random(1, 65536));
     setup.length = static_cast<uint16_t>(sel->lastStep - sel->firstStep + 1);
     setup.root = static_cast<uint8_t>(mtProject.values.padBoardRootNote % 12);
     setup.scale = static_cast<uint8_t>(clamp<int>(scale, 0, MAX_SCALE));
@@ -649,10 +660,26 @@ void Sequencer::fillGenerative(
           mtProject.values.lastUsedInstrument, instrumentStep, !isSampleTrack(t));
         const bool percNotes = drums && isDrumSynthInstrument(instrument);
 
+        uint16_t lengths[kPatternMaxSteps] = {}; // melodic parts: length of the note at a step
+
         for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
             const gen::Event e = gen::stepEvent(setup, static_cast<uint8_t>(lane), offset);
+            if (!drums)
+            {
+                // the length of the notes is written in a moment; what an earlier take left in
+                // these steps must not change it
+                step->micromove = -1;
+                for (auto& slot : step->fx)
+                {
+                    if (slot.type == fx.FX_TYPE_GATE_LENGTH)
+                    {
+                        slot.type = static_cast<uint8_t>(fx.FX_TYPE_NONE);
+                        slot.value = 0;
+                    }
+                }
+            }
             if (e.on)
             {
                 step->instrument = instrument;
@@ -664,10 +691,11 @@ void Sequencer::fillGenerative(
                     step->note = static_cast<int8_t>(clamp<int>(e.note, STEP_NOTE_MIN, STEP_NOTE_MAX));
                 // the volume of a step is a percentage, the generator speaks in velocities
                 step->volume = static_cast<int8_t>(clamp<int>((e.velocity * 100 + 63) / 127, 1, 100));
+                lengths[s] = e.length;
             }
             else if (e.off)
             {
-                // the bass is cut, the pads fade out
+                // the bass is cut, the pads and the lead fade out
                 step->note = setup.mode == gen::kBass ? STEP_NOTE_OFF_CUT : STEP_NOTE_OFF_FADE;
                 step->instrument = instrument;
                 step->volume = STEP_VELO_DEFAULT;
@@ -676,6 +704,23 @@ void Sequencer::fillGenerative(
             {
                 step->note = STEP_NOTE_EMPTY;
                 step->volume = STEP_VELO_DEFAULT;
+            }
+        }
+
+        // The length of the notes: a note shorter than a step gets a Gate length, a longer one an
+        // OFF step where it ends. A note that lasts to the end of the selection, or until the
+        // next note, needs neither.
+        if (!drums)
+        {
+            for (uint16_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
+            {
+                if (lengths[s] == 0)
+                    continue;
+                const uint32_t endTick =
+                  static_cast<uint32_t>(offset) * gen::kMicroStepsPerStep + lengths[s];
+                if (endTick >= static_cast<uint32_t>(setup.length) * gen::kMicroStepsPerStep)
+                    continue;
+                writeNoteLength(t, s, lengths[s], 0);
             }
         }
     }
@@ -696,12 +741,12 @@ const char* Sequencer::getGenerativeStyleName(int16_t)
     return "Random";
 }
 
-int16_t Sequencer::resolveGenerativeStyle(int16_t style)
+int16_t Sequencer::resolveGenerativeStyle(int16_t style, int16_t)
 {
     return style;
 }
 
-void Sequencer::fillGenerative(int16_t, int16_t, int16_t, int16_t, int16_t)
+void Sequencer::fillGenerative(int16_t, int16_t, int16_t, int16_t, int16_t, int16_t)
 {
 }
 #endif

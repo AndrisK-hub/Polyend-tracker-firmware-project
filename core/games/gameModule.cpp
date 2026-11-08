@@ -26,7 +26,7 @@ namespace {
 // ---------------------------------------------------------------------------------------------
 // Button layout. The Mini has a D-pad, a middle key and four function keys:
 //   arrows = D-pad, Fn1 = Select, Fn2 = Start, Fn3 = B, Fn4 = A, Middle = Start.
-// Hold Menu to leave the game.
+// Tap Menu for a sound test (a beep and some numbers), hold Menu to leave the game.
 constexpr uint8_t kMapFn1 = nes::kBtnSelect;
 constexpr uint8_t kMapFn2 = nes::kBtnStart;
 constexpr uint8_t kMapFn3 = nes::kBtnB;
@@ -115,6 +115,57 @@ uint8_t readPad()
     return p;
 }
 
+// A tiny 3x5 font for the numbers of the sound test: 0-9 and A-F, five rows of three bits each.
+constexpr uint16_t kGlyphs[16] = { 0x7B6F, 0x2C97, 0x73E7, 0x73CF, 0x5BC9, 0x79CF, 0x79EF, 0x7252,
+                                   0x7BEF, 0x7BCF, 0x7BED, 0x6BAE, 0x7927, 0x6B6E, 0x79E7, 0x79E4 };
+constexpr uint8_t kInfoBackground = 0x00; // black and white in the picture's colour format
+constexpr uint8_t kInfoForeground = 0xFF;
+constexpr int kInfoScale = 2;
+constexpr int kInfoAdvance = 4 * kInfoScale;
+constexpr int kInfoRowHeight = 6 * kInfoScale;
+constexpr int kInfoRows = 2;
+constexpr uint16_t kInfoFrames = 300; // about five seconds
+constexpr uint32_t kBeepSamples = 11025; // a quarter of a second
+constexpr int16_t kBeepLevel = 8000;
+constexpr uint32_t kBeepHalfPeriod = 25; // about 880 Hz
+
+void drawGlyph(uint8_t* frame, int x, int y, uint8_t index)
+{
+    const uint16_t bits = kGlyphs[index & 15];
+    for (int row = 0; row < 5; row++)
+    {
+        for (int col = 0; col < 3; col++)
+        {
+            if (bits & (1u << (14 - (row * 3 + col))))
+            {
+                for (int dy = 0; dy < kInfoScale; dy++)
+                {
+                    memset(frame + (y + row * kInfoScale + dy) * 256 + x + col * kInfoScale,
+                           kInfoForeground,
+                           kInfoScale);
+                }
+            }
+        }
+    }
+}
+
+// Draws capital hex digits (0-9, A-F); every other character is a gap.
+void drawInfoText(uint8_t* frame, int x, int y, const char* text)
+{
+    for (; *text != 0; text++, x += kInfoAdvance)
+    {
+        const char c = *text;
+        if (c >= '0' && c <= '9')
+        {
+            drawGlyph(frame, x, y, static_cast<uint8_t>(c - '0'));
+        }
+        else if (c >= 'A' && c <= 'F')
+        {
+            drawGlyph(frame, x, y, static_cast<uint8_t>(c - 'A' + 10));
+        }
+    }
+}
+
 void functUp(uint8_t state)
 {
     setPadBit(nes::kBtnUp, state);
@@ -156,7 +207,11 @@ void functFn4(uint8_t state)
 // it. The error screen has nothing to lose, so a short press leaves it.
 void functMenuRunning(uint8_t state)
 {
-    if (state == buttonHold)
+    if (state == buttonPress)
+    {
+        gameModule.soundTest();
+    }
+    else if (state == buttonHold)
     {
         gameModule.quitRequested();
     }
@@ -319,6 +374,12 @@ void cGameModule::start(uint32_t options)
     frameReady = false;
     s_pad = 0;
     console = nullptr;
+    beepLeft = 0;
+    beepPhase = 0;
+    soundInfoFrames = 0;
+    lastFrameSamples = 0;
+    lastPeak = 0;
+    lastFrameUs = 0;
 
     songTimer.hide();
     mtPadBoard.releaseAllInstruments();
@@ -409,6 +470,8 @@ void cGameModule::presentFrame()
 void cGameModule::collectSound()
 {
     int16_t samples[256];
+    uint32_t total = 0;
+    uint32_t peak = 0;
     for (;;)
     {
         const int count = console->apu.readSamples(samples, 256);
@@ -416,8 +479,71 @@ void cGameModule::collectSound()
         {
             break;
         }
+        total += static_cast<uint32_t>(count);
+        for (int i = 0; i < count; i++)
+        {
+            const uint32_t level = static_cast<uint32_t>(samples[i] < 0 ? -samples[i] : samples[i]);
+            if (level > peak)
+            {
+                peak = level;
+            }
+        }
+
+        // the test beep goes through the same buffer, mixer and output as the game's sound
+        for (int i = 0; i < count && beepLeft > 0; i++, beepLeft--, beepPhase++)
+        {
+            const int32_t beep = ((beepPhase / kBeepHalfPeriod) & 1) ? kBeepLevel : -kBeepLevel;
+            int32_t mixed = samples[i] + beep;
+            if (mixed > 32767)
+            {
+                mixed = 32767;
+            }
+            else if (mixed < -32768)
+            {
+                mixed = -32768;
+            }
+            samples[i] = static_cast<int16_t>(mixed);
+        }
+
         nesAudioStream.push(samples, static_cast<uint32_t>(count));
     }
+    lastFrameSamples = total;
+    lastPeak = peak;
+}
+
+void cGameModule::soundTest()
+{
+    if (state != kStateRunning)
+    {
+        return;
+    }
+    beepLeft = kBeepSamples;
+    beepPhase = 0;
+    soundInfoFrames = kInfoFrames;
+}
+
+// Numbers about the sound in the top left corner of the picture, all in hexadecimal:
+//   B  audio blocks the audio engine has asked for (counts up while the audio engine runs)
+//   F  samples waiting in the sound buffer
+//   A  1 = the sound stream is connected to the mixer, 2 = it is switched on (3 = both)
+//   C  samples the emulated sound chip made for the last picture (about 2DF)
+//   E  loudest of them (0 = the game is silent)
+//   D  milliseconds the emulator needed for the last picture (16 or less keeps up)
+void cGameModule::drawSoundInfo()
+{
+    char line[40];
+    uint8_t* frame = backBuffer;
+
+    memset(frame, kInfoBackground, 256 * (kInfoRows * kInfoRowHeight + 2));
+
+    const unsigned flags = (nesAudioStream.isActive() ? 1u : 0u) | (nesAudioStream.isRunning() ? 2u : 0u);
+    snprintf(line, sizeof(line), "B%04X F%04X A%X", static_cast<unsigned>(nesAudioStream.blocksRequested() & 0xFFFF),
+             static_cast<unsigned>(nesAudioStream.fill() & 0xFFFF), flags);
+    drawInfoText(frame, 2, 1, line);
+
+    snprintf(line, sizeof(line), "C%03X E%04X D%02X", static_cast<unsigned>(lastFrameSamples & 0xFFF),
+             static_cast<unsigned>(lastPeak & 0xFFFF), static_cast<unsigned>((lastFrameUs / 1000) & 0xFF));
+    drawInfoText(frame, 2, 1 + kInfoRowHeight, line);
 }
 
 void cGameModule::update()
@@ -468,9 +594,16 @@ void cGameModule::update()
     }
 
     console->setPad(0, readPad());
+    const uint32_t runStartUs = platform->getTimer()->micros();
     console->runFrame();
+    lastFrameUs = platform->getTimer()->micros() - runStartUs;
     frameReady = true;
     collectSound();
+    if (soundInfoFrames > 0)
+    {
+        soundInfoFrames--;
+        drawSoundInfo();
+    }
 
     presentFrame();
 }

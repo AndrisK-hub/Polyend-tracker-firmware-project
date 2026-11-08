@@ -324,6 +324,9 @@ class cPatternEditor : public ModuleBase
         int16_t to;
         int16_t param;
         int16_t density[Sequencer::fillStepEnd__];
+        // generative parts: the number of the song (0 = a new one every time); parts filled with
+        // the same style and song fit together
+        int16_t song;
     };
     static strFill fillData[6];
     uint8_t getFillDataIdx() const

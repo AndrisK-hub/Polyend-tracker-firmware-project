@@ -62,6 +62,11 @@ struct Style
     uint8_t passing;        // chance (%) of a passing note (third, seventh, step below)
     bool bounce;            // the offbeat eighths jump an octave
     uint8_t ownScale;       // scale used when the chosen one is Chromatic
+    const char* lead;       // when the lead plays (same notation)
+    uint8_t bassGate;       // how much of the time to the next note a bass note sounds (%)
+    uint8_t leadGate;       // the same for the lead
+    uint8_t leap;           // chance (%) that the lead jumps instead of walking
+    uint8_t still;          // chance (%) that the lead repeats its note
 };
 
 constexpr Style styles[kStyleCount] = {
@@ -69,67 +74,67 @@ constexpr Style styles[kStyleCount] = {
     { "SynthPop",
       { "9.....2.9.3...5.", "....9.......9..3", "9292929292929292", "......3.......5.",
         "......4.....3.4.", nullptr },
-      "9.3.9.3.9.3.9.3.", { 0, 5, 2, 6 }, 2, 12, 14, 8, false, 1 },
+      "9.3.9.3.9.3.9.3.", { 0, 5, 2, 6 }, 2, 12, 14, 8, false, 1, "9.3.9.5.9.3.9.5.", 70, 75, 12, 10 },
     // syncopated kick, open hat on the last offbeat
     { "NewWave",
       { "9..9....9.7...3.", "....9.......9..2", "9292929292929230", "..............7.",
         "..3...5...3...5.", nullptr },
-      "9.3.9.3.9.5.9.3.", { 0, 2, 5, 4 }, 2, 14, 12, 10, false, 1 },
+      "9.3.9.3.9.5.9.3.", { 0, 2, 5, 4 }, 2, 14, 12, 10, false, 1, "9..5..9...5..9..", 65, 60, 15, 10 },
     // four on the floor, claps, offbeat hats, rolling octave bass
     { "Italo",
       { "9...9...9...9.5.", "....9.......9..3", "..9.3.9...9.3.9.", "..............7.",
         "..3..4..3..4..3.", nullptr },
-      "9.9.9.9.9.9.9.9.", { 0, 5, 3, 4 }, 2, 0, 6, 6, true, 1 },
+      "9.9.9.9.9.9.9.9.", { 0, 5, 3, 4 }, 2, 0, 6, 6, true, 1, "9.5.9.5.9.5.9.5.", 55, 55, 20, 5 },
     // sixteenth hats that leave out the snare steps, octave bounce
     { "Disco",
       { "9...9...9...9...", "....9.......9...", "99.9.9.999.9.9.9", "..9...9...9...9.",
         "...3..3....3..3.", nullptr },
-      "9.9.5.9.9.9.5.9.", { 0, 3, 6, 2 }, 2, 0, 10, 8, true, 3 },
+      "9.9.5.9.9.9.5.9.", { 0, 3, 6, 2 }, 2, 0, 10, 8, true, 3, "9.9.5.9.9.5.9.9.", 60, 50, 18, 8 },
     // four on the floor, offbeat hats and open hats, deep stabs
     { "House",
       { "9...9...9...9...", "....9.......9...", ".9.9.9.9.9.9.9.9", "..9...9...9...9.",
         "..3...4...3...5.", nullptr },
-      "..9...9...9...9.", { 0, 0, 5, 6 }, 4, 12, 12, 10, false, 3 },
+      "..9...9...9...9.", { 0, 0, 5, 6 }, 4, 12, 12, 10, false, 3, "..9...5...9..5..", 55, 40, 10, 20 },
     // four on the floor, sixteenth hats, rolling offbeat bass
     { "Techno",
       { "9...9...9...9...", "....7.......7...", "9595959595959595", "..9...9...9...9.",
         "..3..5..3..5..3.", nullptr },
-      ".9.9.9.9.9.9.9.9", { 0, 0, 1, 0 }, 4, 8, 10, 14, false, 7 },
+      ".9.9.9.9.9.9.9.9", { 0, 0, 1, 0 }, 4, 8, 10, 14, false, 7, "9.5.9.9.5.9.9.5.", 45, 35, 8, 40 },
     // eighth note kick, sixteenth hats, sequenced bass, metal hits
     { "EBM",
       { "9.9.9.9.9.9.9.9.", "....9.......9...", "9999999999999999", "..............5.",
         "5..5..5..5..5...", nullptr },
-      "9.9.9.9.9.9.9.9.", { 0, 0, 3, 4 }, 4, 18, 14, 10, false, 7 },
+      "9.9.9.9.9.9.9.9.", { 0, 0, 3, 4 }, 4, 18, 14, 10, false, 7, "9.9.9.9.9.9.9.9.", 50, 50, 5, 45 },
     // syncopated kick and claps
     { "Electro",
       { "9......5..9...3.", "....9.......9...", "9.9.9.9.9.9.9.9.", "......3.......5.",
         "..3.5.3.5.3.....", nullptr },
-      "9.....5.9..9.3..", { 0, 0, 5, 3 }, 2, 10, 14, 10, false, 1 },
+      "9.....5.9..9.3..", { 0, 0, 5, 3 }, 2, 10, 14, 10, false, 1, "9..9..9.9..9..9.", 60, 55, 15, 15 },
     // broken beats: ghost snares between the backbeats
     { "Breaks",
       { "9.....3...9...2.", "....9..2.2..9.2.", "9.9.9.9.9.9.9.9.", "..9...5...9...5.",
         ".3..3...3.3.3...", nullptr },
-      "9.....5..9....3.", { 0, 0, 3, 5 }, 2, 12, 12, 10, false, 1 },
+      "9.....5..9....3.", { 0, 0, 3, 5 }, 2, 12, 12, 10, false, 1, "9.5..9..5..9..5.", 70, 60, 15, 10 },
     // boom bap
     { "HipHop",
       { "9.....5...9...2.", "....9.......9...", "9.9.9.9.9.9.9.9.", "..............3.",
         "......3.....3...", nullptr },
-      "9.....5...9...3.", { 0, 5, 3, 4 }, 2, 6, 10, 10, false, 1 },
+      "9.....5...9...3.", { 0, 5, 3, 4 }, 2, 6, 10, 10, false, 1, "9.....5.9.....3.", 90, 90, 10, 15 },
     // half-time snare, hat bursts, long sub bass
     { "Trap",
       { "9......5..9....3", "........9.......", "9.9.9.9.9.9.9.9.", "..............4.",
         "..3.....3.....3.", nullptr },
-      "9......5..9....3", { 0, 0, 5, 4 }, 4, 6, 8, 8, false, 1 },
+      "9......5..9....3", { 0, 0, 5, 4 }, 4, 6, 8, 8, false, 1, "9.......5...9...", 100, 100, 12, 20 },
     // two-step: kick, snare on 2 and 4, fast hats, reese bass
     { "DnB",
       { "9.........7....2", "....9.......9...", "9.9.9.9.9.9.9.9.", "......3.......5.",
         "..3.....3.3...3.", nullptr },
-      "9.........7....3", { 0, 5, 3, 6 }, 2, 10, 10, 12, false, 1 },
+      "9.........7....3", { 0, 5, 3, 6 }, 2, 10, 10, 12, false, 1, "9.5.9.5.9.9.5.9.", 85, 60, 22, 5 },
     // very sparse: a kick now and then, soft ticks, one long bass note per bar
     { "Ambient",
       { "9.......2.......", "........3.......", "..3.....2...3...", "................",
         "...2......2.....", nullptr },
-      "9...............", { 0, 3, 5, 4 }, 4, 0, 20, 10, false, 1 },
+      "9...............", { 0, 3, 5, 4 }, 4, 0, 20, 10, false, 1, "9.......3.......", 100, 100, 8, 25 },
 };
 
 int weightOf(const char* pattern, int pos)
@@ -299,6 +304,18 @@ int chordDegree(const Setup& s, const Style& st, int bar, int barsPerChord)
     return st.prog[slot];
 }
 
+// Every melodic part reads its chord from here, so a bassline, pads and a lead of one style and
+// one song always change chord in the same bar and agree on which chord it is.
+int chordBarsOf(const Setup& s, const Style& st)
+{
+    return st.progBars * (evolveIndex(s) == kGentle ? 2 : 1);
+}
+
+int chordAt(const Setup& s, const Style& st, int bar)
+{
+    return chordDegree(s, st, bar, chordBarsOf(s, st));
+}
+
 // ---------------------------------------------------------------------------------------------
 // Drums
 // the energy from which a lane plays
@@ -396,6 +413,207 @@ Event drumEvent(const Setup& s, uint8_t lane, uint16_t offset)
 }
 
 // ---------------------------------------------------------------------------------------------
+// When the melodic parts start and stop. This is separate from what they play, so that the length
+// of a note can look ahead to the next one.
+struct Hit
+{
+    bool on = false;
+    bool off = false;
+};
+
+// Bassline. 'pickup' is set when the note is the pickup before a chord change.
+Hit bassHit(const Setup& s, const Style& st, uint16_t offset, bool* pickup)
+{
+    Hit h;
+    if (pickup != nullptr)
+        *pickup = false;
+    const int bar = offset / kBarSteps;
+    const int pos = offset % kBarSteps;
+    const int bars = barCount(s);
+    const int e = barEnergy(s, bar);
+    const int mut = mutationTenths(s);
+
+    if (e == 0)
+    {
+        // the break: the bass is cut at its start
+        if (pos == 0 && (bar == 0 || barEnergy(s, bar - 1) > 0))
+            h.off = true;
+        return h;
+    }
+
+    const int weight = weightOf(st.bass, pos);
+    if (weight >= 9)
+        h.on = true;
+    else if (weight > 0)
+    {
+        const int chance = weight * kGain[e] * mut / 10 + 40; // a bassline is busier than the hats
+        h.on = rnd(s, 20, static_cast<uint32_t>(variationKey(s, bar)), static_cast<uint32_t>(pos)) < chance;
+    }
+
+    // a pickup on the last sixteenth of a fill bar leads to the next chord
+    if (!h.on && isFillBar(s, bar) && pos == 15 && bar + 1 < bars)
+    {
+        const int strength = fillStrength(s, bar);
+        if (rnd(s, 41, static_cast<uint32_t>(bar), 0) < 90 * strength * mut / 20)
+        {
+            h.on = true;
+            if (pickup != nullptr)
+                *pickup = true;
+        }
+    }
+    return h;
+}
+
+// Pad voices: they enter as the energy rises, roll in one after another on a chord change, and
+// are cut in the break. 'ornament' is set for the single high notes between the chords.
+constexpr int8_t kVoiceMinEnergy[kAmbientVoices] = { 1, 2, 2, 3 };
+
+Hit padHit(const Setup& s, const Style& st, uint8_t voice, uint16_t offset, bool* ornament)
+{
+    Hit h;
+    if (ornament != nullptr)
+        *ornament = false;
+    if (voice >= kAmbientVoices)
+        return h;
+    const int bar = offset / kBarSteps;
+    const int pos = offset % kBarSteps;
+    const int e = barEnergy(s, bar);
+    const int before = bar == 0 ? 0 : barEnergy(s, bar - 1);
+    const int barsPerChord = chordBarsOf(s, st);
+
+    if (e == 0)
+    {
+        if (pos == voice * 2 && before > 0)
+            h.off = true; // fade out, one voice after the other
+        return h;
+    }
+    if (e < kVoiceMinEnergy[voice])
+        return h;
+
+    if (pos == voice * 4) // the voices roll in one beat apart
+    {
+        const bool chordChange = (bar % barsPerChord) == 0;
+        const bool entering = (bar % kPhraseBars) == 0 && before < kVoiceMinEnergy[voice];
+        h.on = chordChange || entering;
+        // a pad is played again in the middle of a long chord from time to time
+        if (!h.on && (bar % barsPerChord) == barsPerChord / 2 && evolveIndex(s) != kGentle)
+            h.on = rnd(s, 80, static_cast<uint32_t>(bar), voice) < (evolveIndex(s) == kWild ? 140 : 70);
+    }
+    // ornaments: single notes of the scale high up, more of them as the energy rises
+    if (!h.on && voice >= 2 && (pos % 4) == 0)
+    {
+        const int chance = (e * 4 + evolveIndex(s) * 6) * (voice == 3 ? 3 : 2) / 2;
+        if (rnd(s, 81, static_cast<uint32_t>(offset), voice) < chance)
+        {
+            h.on = true;
+            if (ornament != nullptr)
+                *ornament = true;
+        }
+    }
+    return h;
+}
+
+// Lead. It has a motif per phrase: the first two bars play the same rhythm and contour (on
+// their own chord), the third answers and the fourth closes. Gentle repeats the motif for eight
+// bars, Wild plays something new every bar.
+uint32_t motifKey(const Setup& s, int bar)
+{
+    if (evolveIndex(s) == kWild)
+        return static_cast<uint32_t>(bar);
+    const int role = bar % kPhraseBars;
+    return static_cast<uint32_t>(variationKey(s, bar) * 4 + (role < 2 ? 0 : role));
+}
+
+// the lowest weight the lead plays at each energy: the lead enters with the build
+constexpr int8_t kLeadMinWeight[5] = { 10, 10, 5, 3, 1 };
+
+Hit leadHit(const Setup& s, const Style& st, uint16_t offset)
+{
+    Hit h;
+    const int bar = offset / kBarSteps;
+    const int pos = offset % kBarSteps;
+    const int e = barEnergy(s, bar);
+    const int before = bar == 0 ? 0 : barEnergy(s, bar - 1);
+
+    if (e < 2)
+    {
+        if (pos == 0 && before >= 2)
+            h.off = true; // the lead stops where the music drops
+        return h;
+    }
+
+    const int mut = mutationTenths(s);
+    const int weight = weightOf(st.lead, pos);
+    const uint32_t key = motifKey(s, bar);
+    if (weight >= 9)
+    {
+        h.on = true;
+        // notes between the beats drop out now and then (Normal a little, Wild a lot)
+        static const uint8_t drop[kEvolveCount] = { 0, 15, 40 }; // of 255
+        if ((pos % 4) != 0 && rnd(s, 122, key, static_cast<uint32_t>(pos)) < drop[evolveIndex(s)])
+            h.on = false;
+    }
+    else if (weight > 0 && weight >= kLeadMinWeight[e])
+    {
+        const int chance = weight * kGain[e] * mut / 20 + 20;
+        h.on = rnd(s, 120, key, static_cast<uint32_t>(pos)) < chance;
+    }
+    else if (weight == 0 && evolveIndex(s) == kWild && (pos % 2) == 0 && e >= 3)
+    {
+        h.on = rnd(s, 123, key, static_cast<uint32_t>(pos)) < 20; // Wild adds notes of its own
+    }
+    // a run of notes at the end of a fill bar
+    if (!h.on && isFillBar(s, bar) && pos >= 12)
+    {
+        const int scaled = fillStrength(s, bar) * mut;
+        h.on = rnd(s, 121, static_cast<uint32_t>(bar), static_cast<uint32_t>(pos)) < 110 * scaled / 20;
+    }
+    return h;
+}
+
+Hit hitAt(const Setup& s, uint8_t lane, uint16_t offset)
+{
+    const Style& st = styles[s.style % kStyleCount];
+    switch (s.mode)
+    {
+        case kBass: return bassHit(s, st, offset, nullptr);
+        case kAmbient: return padHit(s, st, lane, offset, nullptr);
+        case kLead: return leadHit(s, st, offset);
+        default: return Hit();
+    }
+}
+
+// Steps from 'offset' to the next start or stop of the same voice (at most maxSteps). A voice
+// with nothing after it in the selection has the rest of the selection.
+int stepsToNext(const Setup& s, uint8_t lane, uint16_t offset, int maxSteps)
+{
+    for (int j = 1; j <= maxSteps; j++)
+    {
+        const unsigned o = static_cast<unsigned>(offset) + static_cast<unsigned>(j);
+        if (o >= s.length)
+            return static_cast<int>(s.length) - offset;
+        const Hit h = hitAt(s, lane, static_cast<uint16_t>(o));
+        if (h.on || h.off)
+            return j;
+    }
+    return maxSteps;
+}
+
+// How long a note sounds when it gets 'gate' percent of the free time 'span' (in steps). 0 means
+// until the next note.
+uint16_t gatedLength(int span, int gate)
+{
+    if (gate >= 96 || span < 1)
+        return 0;
+    int ticks = span * kMicroStepsPerStep * gate / 100;
+    if (ticks < 6)
+        ticks = 6; // not shorter than an eighth of a step
+    if (ticks >= span * kMicroStepsPerStep)
+        return 0;
+    return static_cast<uint16_t>(ticks);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Bassline
 Event bassEvent(const Setup& s, uint16_t offset)
 {
@@ -403,50 +621,28 @@ Event bassEvent(const Setup& s, uint16_t offset)
     const Style& st = styles[s.style % kStyleCount];
     const int bar = offset / kBarSteps;
     const int pos = offset % kBarSteps;
-    const int bars = barCount(s);
     const int e = barEnergy(s, bar);
-    const int mut = mutationTenths(s);
     const Scale sc = effectiveScale(s, st);
 
-    if (e == 0)
-    {
-        // the break: the bass is cut at its start
-        if (pos == 0 && (bar == 0 || barEnergy(s, bar - 1) > 0))
-            ev.off = true;
-        return ev;
-    }
-
-    bool on = false;
-    const int weight = weightOf(st.bass, pos);
-    if (weight >= 9)
-        on = true;
-    else if (weight > 0)
-    {
-        const int chance = weight * kGain[e] * mut / 10 + 40; // a bassline is busier than the hats
-        on = rnd(s, 20, static_cast<uint32_t>(variationKey(s, bar)), static_cast<uint32_t>(pos)) < chance;
-    }
-
-    const int chord = chordDegree(s, st, bar, st.progBars);
-    int degree = chord;
     bool pickup = false;
-
-    // a pickup on the last sixteenth of a fill bar leads to the next chord
-    if (!on && isFillBar(s, bar) && pos == 15 && bar + 1 < bars)
+    const Hit hit = bassHit(s, st, offset, &pickup);
+    if (hit.off)
     {
-        const int strength = fillStrength(s, bar);
-        if (rnd(s, 41, static_cast<uint32_t>(bar), 0) < 90 * strength * mut / 20)
-        {
-            on = true;
-            pickup = true;
-            degree = chordDegree(s, st, bar + 1, st.progBars) - 1; // a step below the next root
-        }
+        ev.off = true;
+        return ev;
     }
-    if (!on)
+    if (!hit.on)
         return ev;
 
-    if (!pickup)
+    const int chord = chordAt(s, st, bar);
+    int degree = chord;
+    if (pickup)
     {
-        const bool chordStart = (bar % st.progBars) == 0 && pos < 4;
+        degree = chordAt(s, st, bar + 1) - 1; // a step below the next root
+    }
+    else
+    {
+        const bool chordStart = (bar % chordBarsOf(s, st)) == 0 && pos < 4;
         const int scale100 = evolveIndex(s) == kGentle ? 50 : (evolveIndex(s) == kNormal ? 100 : 170);
         const int pOct = st.octave * scale100 / 100;
         const int pFifth = st.fifth * scale100 / 100;
@@ -473,14 +669,28 @@ Event bassEvent(const Setup& s, uint16_t offset)
     ev.on = true;
     ev.velocity = static_cast<uint8_t>(clampInt(v, 30, 127));
     ev.note = static_cast<int16_t>(noteOfDegree(s, sc, degree));
+
+    // The length: the style says how much of the time to the next note a note sounds, and every
+    // bar the gate moves a little so the line breathes. The notes before a chord change ring on.
+    if (!pickup)
+    {
+        const int span = stepsToNext(s, 0, offset, kBarSteps);
+        int gate = st.bassGate;
+        const int r = rnd(s, 90, static_cast<uint32_t>(variationKey(s, bar)), static_cast<uint32_t>(pos)) % 100;
+        if (r < 22)
+            gate -= 25;
+        else if (r < 36)
+            gate += 30;
+        if (isFillBar(s, bar) && pos >= 8)
+            gate += 25;
+        gate -= (e - 2) * 4; // tighter when the music is busier
+        ev.length = gatedLength(span, clampInt(gate, 15, 100));
+    }
     return ev;
 }
 
 // ---------------------------------------------------------------------------------------------
-// Ambient pads: voices enter as the energy rises, roll in one after another on a chord change,
-// and are cut in the break.
-constexpr int8_t kVoiceMinEnergy[kAmbientVoices] = { 1, 2, 2, 3 };
-
+// Ambient pads
 Event ambientEvent(const Setup& s, uint8_t voice, uint16_t offset)
 {
     Event ev;
@@ -488,48 +698,28 @@ Event ambientEvent(const Setup& s, uint8_t voice, uint16_t offset)
         return ev;
     const Style& st = styles[s.style % kStyleCount];
     const int bar = offset / kBarSteps;
-    const int pos = offset % kBarSteps;
     const int e = barEnergy(s, bar);
-    const int before = bar == 0 ? 0 : barEnergy(s, bar - 1);
     const Scale sc = effectiveScale(s, st);
-    const int barsPerChord = evolveIndex(s) == kGentle ? 8 : 4;
+    const int barsPerChord = chordBarsOf(s, st);
 
-    if (e == 0)
+    bool ornament = false;
+    const Hit hit = padHit(s, st, voice, offset, &ornament);
+    if (hit.off)
     {
-        if (pos == voice * 2 && before > 0)
-            ev.off = true; // fade out, one voice after the other
+        ev.off = true;
         return ev;
     }
-    if (e < kVoiceMinEnergy[voice])
+    if (!hit.on)
         return ev;
 
-    bool on = false;
-    if (pos == voice * 4) // the voices roll in one beat apart
-    {
-        const bool chordChange = (bar % barsPerChord) == 0;
-        const bool entering = (bar % kPhraseBars) == 0 && before < kVoiceMinEnergy[voice];
-        on = chordChange || entering;
-        // a pad is played again in the middle of a long chord from time to time
-        if (!on && (bar % barsPerChord) == barsPerChord / 2 && evolveIndex(s) != kGentle)
-            on = rnd(s, 80, static_cast<uint32_t>(bar), voice) < (evolveIndex(s) == kWild ? 140 : 70);
-    }
-    // ornaments: single notes of the scale high up, more of them as the energy rises
-    int degree;
-    const int chord = chordDegree(s, st, bar, barsPerChord);
+    const int chord = chordAt(s, st, bar);
     static const int8_t tone[kAmbientVoices] = { 0, 4, 2, 4 };
-    degree = chord + tone[voice] + (voice >= 2 ? sc.count : 0);
-    if (!on && voice >= 2 && (pos % 4) == 0)
+    int degree = chord + tone[voice] + (voice >= 2 ? sc.count : 0);
+    if (ornament)
     {
-        const int chance = (e * 4 + evolveIndex(s) * 6) * (voice == 3 ? 3 : 2) / 2;
-        if (rnd(s, 81, static_cast<uint32_t>(offset), voice) < chance)
-        {
-            on = true;
-            static const int8_t ornament[5] = { 1, 2, 4, 6, 8 };
-            degree = chord + ornament[rnd(s, 82, static_cast<uint32_t>(offset), voice) % 5] + sc.count;
-        }
+        static const int8_t ornaments[5] = { 1, 2, 4, 6, 8 };
+        degree = chord + ornaments[rnd(s, 82, static_cast<uint32_t>(offset), voice) % 5] + sc.count;
     }
-    if (!on)
-        return ev;
     if (voice == 3 && e >= 4 && evolveIndex(s) == kWild)
         degree += 2; // the seventh colours the top voice at the peak
 
@@ -538,6 +728,142 @@ Event ambientEvent(const Setup& s, uint8_t voice, uint16_t offset)
     ev.on = true;
     ev.velocity = static_cast<uint8_t>(clampInt(v, 30, 120));
     ev.note = static_cast<int16_t>(noteOfDegree(s, sc, degree));
+
+    // The length: ornaments are short, the chord notes ring for most of the chord. The lowest
+    // voice holds the whole chord; the others let go a little earlier, a different amount for
+    // every chord, so the pad breathes.
+    const int span = stepsToNext(s, voice, offset, barsPerChord * kBarSteps);
+    if (ornament)
+    {
+        const int steps = 2 + rnd(s, 84, static_cast<uint32_t>(offset), voice) % 5;
+        ev.length = steps >= span ? 0 : static_cast<uint16_t>(steps * kMicroStepsPerStep);
+    }
+    else if (voice > 0)
+    {
+        static const uint8_t gates[3][5] = { { 100, 100, 100, 92, 100 }, //
+                                             { 100, 92, 85, 75, 100 },   //
+                                             { 100, 85, 70, 60, 45 } };
+        const int chordIndex = bar / barsPerChord;
+        const int gate = gates[evolveIndex(s)][rnd(s, 85, static_cast<uint32_t>(chordIndex), voice) % 5];
+        ev.length = gatedLength(span, gate);
+    }
+    return ev;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Lead
+// the chord tones (the root, the third and the fifth) are the places where the melody rests
+int snapToChord(int degree, int chord, int count)
+{
+    const int rel = degree - chord;
+    const int octave = floorDiv(rel, count);
+    const int d = rel - octave * count;
+    const int tones[4] = { 0, 2 % count, 4 % count, count };
+    int best = 0;
+    int bestDist = 99;
+    for (int i = 0; i < 4; i++)
+    {
+        const int dist = d > tones[i] ? d - tones[i] : tones[i] - d;
+        if (dist < bestDist)
+        {
+            bestDist = dist;
+            best = tones[i];
+        }
+    }
+    return chord + octave * count + best;
+}
+
+// The scale degree the lead plays at 'pos' of a bar: a walk that starts on a chord tone, moves
+// mostly by step and lands on chord tones on the beats. The walk is the same for the bars of a
+// motif, only the chord under it changes.
+int leadDegree(const Setup& s, const Style& st, const Scale& sc, int bar, int pos)
+{
+    const int chord = chordAt(s, st, bar);
+    const uint32_t key = motifKey(s, bar);
+    const int lo = -2;
+    const int hi = sc.count + 4;
+    const bool fill = isFillBar(s, bar);
+    int degree = chord;
+    bool started = false;
+
+    for (int p = 0; p <= pos; p++)
+    {
+        if (!leadHit(s, st, static_cast<uint16_t>(bar * kBarSteps + p)).on)
+            continue;
+        if (!started)
+        {
+            static const int8_t tones[3] = { 0, 2, 4 };
+            degree = chord + tones[rnd(s, 130, key, 0) % 3];
+            if (rnd(s, 131, key, 0) % 100 < 35)
+                degree += sc.count;
+            started = true;
+        }
+        else
+        {
+            const int r = rnd(s, 132, key, static_cast<uint32_t>(p)) % 100;
+            const int roll = rnd(s, 133, key, static_cast<uint32_t>(p));
+            int dir = (roll & 1) ? 1 : -1;
+            int step;
+            if (fill && p >= 12)
+            {
+                dir = 1; // the run at the end of a fill bar climbs
+                step = 1 + (roll >> 1) % 2;
+            }
+            else if (r < st.still)
+                step = 0;
+            else if (r < st.still + st.leap)
+                step = dir * (3 + (roll >> 1) % 3);
+            else
+                step = dir * (((roll >> 1) % 10) < 7 ? 1 : 2);
+            degree += step;
+        }
+        while (degree > hi)
+            degree -= sc.count;
+        while (degree < lo)
+            degree += sc.count;
+        if (p % 4 == 0)
+            degree = snapToChord(degree, chord, sc.count);
+    }
+    return degree;
+}
+
+Event leadEvent(const Setup& s, uint16_t offset)
+{
+    Event ev;
+    const Style& st = styles[s.style % kStyleCount];
+    const int bar = offset / kBarSteps;
+    const int pos = offset % kBarSteps;
+    const int e = barEnergy(s, bar);
+    const Scale sc = effectiveScale(s, st);
+
+    const Hit hit = leadHit(s, st, offset);
+    if (hit.off)
+    {
+        ev.off = true;
+        return ev;
+    }
+    if (!hit.on)
+        return ev;
+
+    int v = 98 + (pos % 4 == 0 ? 10 : (pos % 2 == 1 ? -10 : 0));
+    v -= (4 - e) * 3;
+    v -= rnd(s, 134, static_cast<uint32_t>(offset), 0) % 12;
+    ev.on = true;
+    ev.velocity = static_cast<uint8_t>(clampInt(v, 30, 127));
+    ev.note = static_cast<int16_t>(noteOfDegree(s, sc, leadDegree(s, st, sc, bar, pos)));
+
+    // The length: the style says how much of the time to the next note a note sounds; some notes
+    // are clipped, some held, and the last note of a phrase is held.
+    const int span = stepsToNext(s, 0, offset, kBarSteps);
+    int gate = st.leadGate;
+    const int r = rnd(s, 140, motifKey(s, bar), static_cast<uint32_t>(pos)) % 100;
+    if (r < 25)
+        gate -= 25;
+    else if (r < 45)
+        gate += 35;
+    if ((bar % kPhraseBars) == kPhraseBars - 1 && span >= 3 && pos >= 8)
+        gate = 100;
+    ev.length = gatedLength(span, clampInt(gate, 15, 100));
     return ev;
 }
 
@@ -558,6 +884,7 @@ int laneCount(uint8_t mode)
         case kDrums: return kDrumLanes;
         case kAmbient: return kAmbientVoices;
         case kBass: return kBassVoices;
+        case kLead: return kLeadVoices;
         default: return 0;
     }
 }
@@ -567,6 +894,29 @@ int16_t drumNote(uint8_t lane)
     // kick 60, snare 62, closed hat 64, open hat 66, cymbal 68, percussion 70
     static const int16_t notes[kDrumLanes] = { 60, 62, 64, 66, 70, 68 };
     return lane < kDrumLanes ? notes[lane] : -1;
+}
+
+uint16_t songSeed(int style, int song)
+{
+    const uint32_t h =
+      hash32(static_cast<uint32_t>(style) + 1u, static_cast<uint32_t>(song) + 17u, 0xA5E3u, 77u);
+    const uint16_t v = static_cast<uint16_t>(h >> 16);
+    return v == 0 ? 1 : v;
+}
+
+int songStyle(int song)
+{
+    return static_cast<int>(hash32(static_cast<uint32_t>(song) + 5u, 0x51u, 0x7Au, 3u) >> 8) % kStyleCount;
+}
+
+int chordRoot(const Setup& s, int bar)
+{
+    return chordAt(s, styles[s.style % kStyleCount], bar < 0 ? 0 : bar);
+}
+
+int chordLength(const Setup& s)
+{
+    return chordBarsOf(s, styles[s.style % kStyleCount]);
 }
 
 int barEnergy(const Setup& s, int bar)
@@ -599,6 +949,7 @@ Event stepEvent(const Setup& s, uint8_t lane, uint16_t offset)
         case kDrums: return drumEvent(s, lane, offset);
         case kAmbient: return ambientEvent(s, lane, offset);
         case kBass: return lane == 0 ? bassEvent(s, offset) : Event();
+        case kLead: return lane == 0 ? leadEvent(s, offset) : Event();
         default: return Event();
     }
 }

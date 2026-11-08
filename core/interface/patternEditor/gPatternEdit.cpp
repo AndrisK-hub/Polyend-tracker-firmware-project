@@ -67,17 +67,17 @@ const char* ptrfillScaleFilterNames[fillScaleFilterCount] = {
     &fillScaleFilterLabels[1][0],
 };
 //------------------------------------------------------------
-static const uint8_t fillStepCount = 11;
+static const uint8_t fillStepCount = 12;
 static_assert(fillStepCount == Sequencer::fillStepEnd__, "one name for every fill step rule");
 const char fillStepLabels[fillStepCount][11] = {
     "Note",  "No Note", "Fx",       "No Fx",    "Random",   "Each",
-    "Euclidean", "Drums", "Gen Drum", "Gen Ambi", "Gen Bass",
+    "Euclidean", "Drums", "Gen Drum", "Gen Ambi", "Gen Bass", "Gen Lead",
 };
 
 const char* ptrfillStepNames[fillStepCount] = {
     &fillStepLabels[0][0], &fillStepLabels[1][0], &fillStepLabels[2][0], &fillStepLabels[3][0],
     &fillStepLabels[4][0], &fillStepLabels[5][0], &fillStepLabels[6][0], &fillStepLabels[7][0],
-    &fillStepLabels[8][0], &fillStepLabels[9][0], &fillStepLabels[10][0],
+    &fillStepLabels[8][0], &fillStepLabels[9][0], &fillStepLabels[10][0], &fillStepLabels[11][0],
 };
 //------------------------------------------------------------
 
@@ -584,7 +584,8 @@ void cPatternEditor::showFillPopup()
 {
     uint8_t fillIdx = getFillDataIdx();
 
-    if (fillData[fillIdx].type == 0 || isFillGenerative())
+    // the generative parts have the song in the last place, the constant fill has no 'To'
+    if (fillData[fillIdx].type == 0 && !isFillGenerative())
     {
         if (fillPlace > 4)
             fillPlace = 4;
@@ -774,7 +775,11 @@ void cPatternEditor::refreshFillType()
     // Constant and the generative parts have one note only
     const bool oneValue = fillData[fillIdx].type == 0 || isFillGenerative();
 
-    if (oneValue)
+    if (isFillGenerative())
+    {
+        refreshFillTo(); // the song
+    }
+    else if (oneValue)
     {
         display.setControlValue(val2PopupBar, -1);
         display.setControlText(label[5], "");
@@ -796,7 +801,8 @@ void cPatternEditor::refreshFillType()
             // drums: the note of the sample drums; bass and pads: where the part sits
             display.setControlText(label[4],
                                    fillData[fillIdx].fillStep == Sequencer::fillStepGenAmbient ||
-                                       fillData[fillIdx].fillStep == Sequencer::fillStepGenBass
+                                       fillData[fillIdx].fillStep == Sequencer::fillStepGenBass ||
+                                       fillData[fillIdx].fillStep == Sequencer::fillStepGenLead
                                      ? "Register"
                                      : "Note");
         }
@@ -959,7 +965,27 @@ void cPatternEditor::refreshFillTo()
 
     fillText2[0] = 0;
 
-    if (fillData[fillIdx].type == 0 || isFillGenerative())
+    if (isFillGenerative())
+    {
+        // the last place is the song: 0 = a new one every time, 1.. the same song for every part
+        const int16_t song = fillData[fillIdx].song;
+        if (song <= 0)
+            snprintf(fillText2, sizeof(fillText2), "Random");
+        else
+            snprintf(fillText2, sizeof(fillText2), "%d", song);
+        display.setControlText(label[5], "Song");
+        display.setControlText2(label[5], fillText2);
+        display.refreshControl(label[5]);
+
+        display.setControlValue(val2PopupBar, (song * 100) / Sequencer::kGenerativeSongs);
+        display.refreshControl(val2PopupBar);
+        display.setControlData(intstrumentsToPopupListControl, &fillEmptyList);
+        display.setControlValue(intstrumentsToPopupListControl, -1);
+        display.refreshControl(intstrumentsToPopupListControl);
+        return;
+    }
+
+    if (fillData[fillIdx].type == 0)
     {
         display.setControlText(label[5], "");
         display.setControlText2(label[5], "");
@@ -1117,6 +1143,7 @@ void cPatternEditor::refreshFillDensity()
         case Sequencer::fillStepGenDrums:
         case Sequencer::fillStepGenAmbient:
         case Sequencer::fillStepGenBass:
+        case Sequencer::fillStepGenLead:
             // 0 = Random, 1.. = the styles (SynthPop, Techno, ...)
             labelText = "Style";
             {
@@ -1162,7 +1189,10 @@ void cPatternEditor::refreshFillStep()
     // a generative part sits at a register: bring a very low note up to something playable
     if (isFillGenerative() && fillData[fillIdx].from < 24)
     {
-        fillData[fillIdx].from = (fillData[fillIdx].fillStep == Sequencer::fillStepGenBass) ? 48 : 60;
+        // bass low, pads in the middle, the lead above them
+        fillData[fillIdx].from = (fillData[fillIdx].fillStep == Sequencer::fillStepGenBass) ?
+                                   48 :
+                                   ((fillData[fillIdx].fillStep == Sequencer::fillStepGenLead) ? 72 : 60);
     }
 
     refreshFillTypeList();
