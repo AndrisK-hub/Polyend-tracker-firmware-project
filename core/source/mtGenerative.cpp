@@ -682,9 +682,10 @@ Hit padHit(const Setup& s, const Style& st, uint8_t voice, uint16_t offset, bool
     return h;
 }
 
-// Lead. It has a motif per phrase: the first two bars play the same rhythm and contour (on
-// their own chord), the third answers and the fourth closes. Gentle repeats the motif for eight
-// bars, Wild plays something new every bar.
+// Lead. The rhythm of a phrase: the first two bars play the same rhythm (on their own chord), the
+// third answers and the fourth closes. Gentle repeats the motif for eight bars, Wild plays
+// something new every bar. The phrase breathes: bar 2 and a closing bar end on a held note and a
+// rest, and now and then a main note comes a sixteenth early (a syncopation).
 uint32_t motifKey(const Setup& s, int bar)
 {
     if (evolveIndex(s) == kWild)
@@ -696,40 +697,111 @@ uint32_t motifKey(const Setup& s, int bar)
 // the lowest weight the lead plays at each energy: the lead enters with the build
 constexpr int8_t kLeadMinWeight[5] = { 10, 10, 5, 3, 1 };
 
-Hit leadHit(const Setup& s, const Style& st, uint16_t offset)
+// The last sixteenth of a bar where the lead may start a note. Bar 2 of a phrase and a closing bar
+// (one that does not lead into the next phrase with a run) end on a held note and a rest.
+int lastLeadPos(const Setup& s, int bar)
 {
-    Hit h;
-    const int bar = offset / kBarSteps;
-    const int pos = offset % kBarSteps;
-    const int e = barEnergy(s, bar);
+    const int role = bar % kPhraseBars;
+    const bool runs = isFillBar(s, bar) && fillStrength(s, bar) >= 2;
+    if (role == 1 || (role == 3 && !runs))
+        return 8 + 4 * (rnd(s, 320, motifKey(s, bar), 0) & 1); // 8 or 12
+    return kBarSteps - 1;
+}
 
+// How the bar ends: 1 = closes the phrase (on the root), 2 = a half cadence (on the third or the
+// fifth), 0 = it goes on. The last bar of a selection closes too.
+int cadenceKind(const Setup& s, int bar)
+{
+    const int role = bar % kPhraseBars;
+    if (role == 3 || (role == 1 && bar + 1 >= barCount(s)))
+        return 1;
+    return role == 1 ? 2 : 0;
+}
+
+// the notes the skeleton and the energy ask for (before the phrase breathes)
+bool leadBaseOn(const Setup& s, const Style& st, int bar, int pos)
+{
+    const int e = barEnergy(s, bar);
     // (the lead is hushed in the intro and the breakdown: only the main notes of the style, which
     // kLeadMinWeight lets through at energy 1; the busier notes come with the build)
     const int mut = mutationTenths(s);
     const int weight = skeletonWeight(s, st, kPartLead, pos, bar);
     const uint32_t key = motifKey(s, bar);
+    bool on = false;
     if (weight >= 9)
     {
-        h.on = true;
+        on = true;
         // notes between the beats drop out now and then (Normal a little, Wild a lot)
         static const uint8_t drop[kEvolveCount] = { 0, 15, 40 }; // of 255
         if ((pos % 4) != 0 && rnd(s, 122, key, static_cast<uint32_t>(pos)) < drop[evolveIndex(s)])
-            h.on = false;
+            on = false;
     }
     else if (weight > 0 && weight >= kLeadMinWeight[e])
     {
         const int chance = weight * kGain[e] * mut / 20 + 20;
-        h.on = rnd(s, 120, key, static_cast<uint32_t>(pos)) < chance;
+        on = rnd(s, 120, key, static_cast<uint32_t>(pos)) < chance;
     }
     else if (weight == 0 && evolveIndex(s) == kWild && (pos % 2) == 0 && e >= 3)
     {
-        h.on = rnd(s, 123, key, static_cast<uint32_t>(pos)) < 20; // Wild adds notes of its own
+        on = rnd(s, 123, key, static_cast<uint32_t>(pos)) < 20; // Wild adds notes of its own
+    }
+    // the intro and the breakdown play the plain line: half of the notes between the beats rest (the
+    // first main note of the bar stays, the lead never stops)
+    if (on && e < 2 && (pos % 4) != 0 && rnd(s, 124, key, static_cast<uint32_t>(pos)) < 128)
+    {
+        int first = 0;
+        while (first < pos && skeletonWeight(s, st, kPartLead, first, bar) < 9)
+            first++;
+        if (first != pos)
+            on = false;
     }
     // a run of notes at the end of a fill bar
-    if (!h.on && isFillBar(s, bar) && pos >= 12)
+    if (!on && isFillBar(s, bar) && pos >= 12)
     {
         const int scaled = fillStrength(s, bar) * mut;
-        h.on = rnd(s, 121, static_cast<uint32_t>(bar), static_cast<uint32_t>(pos)) < 110 * scaled / 20;
+        on = rnd(s, 121, static_cast<uint32_t>(bar), static_cast<uint32_t>(pos)) < 110 * scaled / 20;
+    }
+    return on;
+}
+
+// A main note on a beat is played a sixteenth early now and then. The first note of the hook (the
+// first two bars of a phrase) stays on the beat. The same for every bar that repeats the rhythm.
+bool isAnticipated(const Setup& s, const Style& st, int bar, int beat)
+{
+    const int pos = beat * 4;
+    if (bar <= 0 && pos == 0)
+        return false;
+    if (pos == 0 && (bar % kPhraseBars) < 2)
+        return false; // the hook starts on the beat, and so does its repeat
+    if (skeletonWeight(s, st, kPartLead, pos, bar) < 9)
+        return false;
+    // the early note and the note it replaces both have to be allowed
+    if (pos > lastLeadPos(s, bar))
+        return false;
+    if (pos == 0 && lastLeadPos(s, bar - 1) < kBarSteps - 1)
+        return false;
+    static const uint8_t chance[kEvolveCount] = { 8, 26, 56 }; // of 255
+    const int c = chance[evolveIndex(s)] + (s.algo ? 20 : 0);
+    return rnd(s, 310, motifKey(s, bar), static_cast<uint32_t>(pos)) < c;
+}
+
+Hit leadHit(const Setup& s, const Style& st, uint16_t offset)
+{
+    Hit h;
+    const int bar = offset / kBarSteps;
+    const int pos = offset % kBarSteps;
+    const int last = lastLeadPos(s, bar);
+    h.on = pos <= last && leadBaseOn(s, st, bar, pos);
+    // a bar that ends a phrase (or answers it) always has its held cadence note
+    if (pos == last && last < kBarSteps - 1 && cadenceKind(s, bar) != 0)
+        h.on = true;
+    if ((pos % 4) == 0 && h.on && isAnticipated(s, st, bar, pos / 4))
+        h.on = false; // it is played a sixteenth earlier
+    if ((pos % 4) == 3 && !h.on && static_cast<unsigned>(offset) + 1 < s.length)
+    {
+        const bool nextBar = pos == kBarSteps - 1;
+        if (isAnticipated(s, st, nextBar ? bar + 1 : bar, nextBar ? 0 : (pos + 1) / 4))
+            h.on = true; // the note of the next beat arrives early
     }
     return h;
 }
@@ -914,80 +986,291 @@ Event ambientEvent(const Setup& s, uint8_t voice, uint16_t offset)
 }
 
 // ---------------------------------------------------------------------------------------------
-// Lead
-// the chord tones (the root, the third and the fifth) are the places where the melody rests
-int snapToChord(int degree, int chord, int count)
+// Lead: the melody. It is a hook that comes back, not a walk of random steps.
+//  * Every phrase (4 bars) has a contour (an arch, a climb, a fall or a wave) that says how high the
+//    melody is on each beat. The hook is the contour of the first bar: bar 2 plays it again (and
+//    ends away from home), bar 3 goes on, bar 4 closes on the root of the chord.
+//  * The beats rest on chord tones: the chord tone nearest to the contour. Between two beats the
+//    melody walks by step to the next one: a passing note halfway, a neighbour note when the two
+//    beats are close, an approach note right before the beat.
+//  * The hook comes back: Normal plays hook A, A, B, A; Gentle A, A, B, B; Wild a new hook every
+//    other phrase. The seed of the song decides the hooks, so the parts of one song agree.
+// Heights are scale degrees counted from the key note (the lead sits around the 'anchor').
+
+// How high the melody is on the 16 beats of a phrase (0 = low .. 5 = high)
+constexpr int8_t kContour[4][16] = {
+    { 1, 2, 2, 3, 3, 4, 4, 5, 5, 4, 4, 3, 3, 2, 1, 0 }, // an arch
+    { 0, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 4, 3, 2 }, // a climb
+    { 5, 5, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 0 }, // a fall
+    { 2, 3, 4, 3, 2, 1, 2, 3, 4, 5, 4, 3, 2, 1, 1, 0 }, // a wave
+};
+
+// which hook a phrase plays: 0 is the main hook that keeps coming back
+int hookOfPhrase(const Setup& s, int phrase)
 {
-    const int rel = degree - chord;
-    const int octave = floorDiv(rel, count);
-    const int d = rel - octave * count;
-    const int tones[4] = { 0, 2 % count, 4 % count, count };
-    int best = 0;
-    int bestDist = 99;
-    for (int i = 0; i < 4; i++)
+    const int flip = s.algo ? rnd(s, 300, 0, 0) % 4 : 2; // an algo song puts its second hook elsewhere
+    switch (evolveIndex(s))
     {
-        const int dist = d > tones[i] ? d - tones[i] : tones[i] - d;
-        if (dist < bestDist)
-        {
-            bestDist = dist;
-            best = tones[i];
-        }
+        case kGentle: return ((phrase + (s.algo ? flip : 0)) / 2) % 2;
+        case kNormal: return (phrase % 4) == flip ? 1 : 0;
+        default: return (phrase % 2) == 0 ? 0 : 1 + phrase / 2;
     }
-    return chord + octave * count + best;
 }
 
-// The scale degree the lead plays at 'pos' of a bar: a walk that starts on a chord tone, moves
-// mostly by step and lands on chord tones on the beats. The walk is the same for the bars of a
-// motif, only the chord under it changes.
-int leadDegree(const Setup& s, const Style& st, const Scale& sc, int bar, int pos)
+// which of the 16 beats of the contour a beat of a bar plays: the second bar repeats the hook but
+// ends elsewhere, Wild goes on instead
+int contourIndex(const Setup& s, int bar, int beat)
+{
+    switch (bar % kPhraseBars)
+    {
+        case 0: return beat;
+        case 1: return evolveIndex(s) == kWild ? 4 + beat : (beat == 3 ? 7 : beat);
+        case 2: return 8 + beat;
+        default: return 12 + beat;
+    }
+}
+
+// the key of a thing the hook decides (the same in every bar that repeats the hook)
+uint32_t hookKey(const Setup& s, int bar, int beat)
+{
+    const uint32_t hook = static_cast<uint32_t>(hookOfPhrase(s, bar / kPhraseBars));
+    const uint32_t wild = evolveIndex(s) == kWild ? static_cast<uint32_t>(bar) : 0u;
+    return hook * 1024u + wild * 16u + static_cast<uint32_t>(contourIndex(s, bar, beat));
+}
+
+// the chord tones of the scale (the root, the third and the fifth) as steps of the scale
+struct ChordTones
+{
+    int n;
+    int count;
+    int res[3];
+};
+
+ChordTones chordTonesOf(const Scale& sc)
+{
+    ChordTones ct;
+    ct.n = 0;
+    ct.count = sc.count;
+    const int cand[3] = { 0, 2 % sc.count, 4 % sc.count };
+    for (int i = 0; i < 3; i++)
+    {
+        bool dup = false;
+        for (int j = 0; j < ct.n; j++)
+            dup = dup || ct.res[j] == cand[i];
+        if (!dup)
+            ct.res[ct.n++] = cand[i];
+    }
+    for (int i = 0; i < ct.n; i++) // ascending
+        for (int j = i + 1; j < ct.n; j++)
+            if (ct.res[j] < ct.res[i])
+            {
+                const int t = ct.res[i];
+                ct.res[i] = ct.res[j];
+                ct.res[j] = t;
+            }
+    return ct;
+}
+
+// the chord tone of 'chord' (a scale degree) nearest to 'target'. 'only' restricts it to the
+// root (1), to the third and the fifth (2), or lets every chord tone in (0).
+int nearestTone(const ChordTones& ct, int chord, int target, bool upperOnTie, int only)
+{
+    int best = chord;
+    int bestDist = 999;
+    const int baseOct = floorDiv(target - chord, ct.count);
+    for (int o = baseOct - 1; o <= baseOct + 1; o++)
+    {
+        for (int i = 0; i < ct.n; i++)
+        {
+            if ((only == 1 && ct.res[i] != 0) || (only == 2 && ct.res[i] == 0 && ct.n > 1))
+                continue;
+            const int h = chord + o * ct.count + ct.res[i];
+            const int dist = h > target ? h - target : target - h;
+            if (dist < bestDist || (dist == bestDist && upperOnTie && h > best))
+            {
+                best = h;
+                bestDist = dist;
+            }
+        }
+    }
+    return best;
+}
+
+// the next chord tone above (dir > 0) or below 'from'
+int stepTone(const ChordTones& ct, int chord, int from, int dir)
+{
+    int best = from + dir * ct.count;
+    const int baseOct = floorDiv(from - chord, ct.count);
+    for (int o = baseOct - 1; o <= baseOct + 1; o++)
+    {
+        for (int i = 0; i < ct.n; i++)
+        {
+            const int h = chord + o * ct.count + ct.res[i];
+            if (dir > 0 && h > from && h < best)
+                best = h;
+            else if (dir < 0 && h < from && h > best)
+                best = h;
+        }
+    }
+    return best;
+}
+
+// how high the melody wants to be on a beat
+int contourHeight(const Setup& s, const Style& st, const Scale& sc, int bar, int beat)
+{
+    const uint32_t hk = hookKey(s, bar, beat);
+    const uint32_t hook = static_cast<uint32_t>(hookOfPhrase(s, bar / kPhraseBars));
+    int h = kContour[rnd(s, 301, hook, 0) % 4][contourIndex(s, bar, beat)];
+    if (s.algo && (rnd(s, 304, hook, 0) & 1))
+        h = 5 - h; // a valley instead of a hill
+    // a personal touch of the hook: a beat a step higher or lower; an algo song takes more liberties
+    const int j = rnd(s, 302, hk, 0) % 100;
+    const int touch = s.algo ? 28 : 16;
+    if (j < touch)
+        h += 1;
+    else if (j < touch * 2)
+        h -= 1;
+    // now and then a leap that the next beat takes back
+    if (beat > 0 && rnd(s, 303, hk, 1) % 100 < (st.leap + (s.algo ? 8 : 0)) / 2)
+        h += (rnd(s, 305, hk, 2) & 1) ? 3 : -3;
+    int base = sc.count / 2 - 1;
+    if (base < 1)
+        base = 1;
+    if (hook != 0)
+        base += 1; // the second hook sits a step higher
+    return base + h;
+}
+
+// The chord tone the melody rests on at a strong beat (0 or 2) of a bar. The bar that ends a
+// phrase closes on the root, bar 2 ends away from home (on the third or the fifth).
+int strongTone(const Setup& s, const Style& st, const Scale& sc, int bar, int beat, bool cadence = true)
 {
     const int chord = chordAt(s, st, bar);
-    const uint32_t key = motifKey(s, bar);
-    const int lo = -2;
-    const int hi = sc.count + 4;
-    const bool fill = isFillBar(s, bar);
-    int degree = chord;
-    bool started = false;
+    const ChordTones ct = chordTonesOf(sc);
+    const int kind = cadenceKind(s, bar);
+    const int last = lastLeadPos(s, bar);
+    const int endBeat = last < kBarSteps - 1 ? last / 4 : -1; // the beat of the held note
+    const int target = contourHeight(s, st, sc, bar, beat);
+    const bool upper = (rnd(s, 306, hookKey(s, bar, beat), 3) & 1) != 0;
+    const bool closes = cadence && beat == endBeat && kind == 1;
+    const bool halfCloses = cadence && beat == endBeat && kind == 2;
+    return nearestTone(ct, chord, target, upper, closes ? 1 : (halfCloses ? 2 : 0));
+}
 
-    for (int p = 0; p <= pos; p++)
+// the chord tone next to 'from' in the direction 'dir'; with 'keepOffRoot' the root is no answer (a
+// half cadence rests on the third or the fifth), the other direction is taken then
+int stepToneFrom(const ChordTones& ct, int chord, int from, int dir, bool keepOffRoot)
+{
+    int to = stepTone(ct, chord, from, dir);
+    if (keepOffRoot && ct.n > 1 && ((to - chord) % ct.count + ct.count) % ct.count == 0)
+        to = stepTone(ct, chord, from, -dir);
+    return to;
+}
+
+// The notes the melody rests on at the four beats of a bar. The strong beats (0 and 2) are chord
+// tones; a weak beat (1 and 3) is often a passing or a neighbour note between the two chord tones
+// around it, so that the melody moves by step and not only by the jumps of the chord.
+// out[4] is the note a plain bar would rest on at beat 2: the first half of a bar that ends on a
+// cadence note at beat 2 still walks like the hook, and only the end of it turns to the cadence.
+void leadBeats(const Setup& s, const Style& st, const Scale& sc, int bar, int out[5])
+{
+    const int chord = chordAt(s, st, bar);
+    const ChordTones ct = chordTonesOf(sc);
+    const int last = lastLeadPos(s, bar);
+    const int endBeat = last < kBarSteps - 1 ? last / 4 : -1;
+    out[0] = strongTone(s, st, sc, bar, 0);
+    out[2] = strongTone(s, st, sc, bar, 2);
+    const int target0 = contourHeight(s, st, sc, bar, 0);
+    const int target2 = contourHeight(s, st, sc, bar, 2);
+    if (out[2] == out[0])
     {
-        if (!leadHit(s, st, static_cast<uint16_t>(bar * kBarSteps + p)).on)
-            continue;
-        if (!started)
+        // not the same note twice: the closing note stays, the note that is not part of the hook moves
+        if (endBeat == 2 && cadenceKind(s, bar) == 1)
+            out[0] = stepTone(ct, chord, out[0], target2 >= target0 ? -1 : 1);
+        else
+            out[2] = stepToneFrom(ct, chord, out[2], endBeat == 2 || target2 >= target0 ? 1 : -1, endBeat == 2 && cadenceKind(s, bar) == 2);
+    }
+    out[4] = out[2];
+    if (endBeat == 2 && cadenceKind(s, bar) != 0)
+    {
+        out[4] = strongTone(s, st, sc, bar, 2, false);
+        if (out[4] == out[0])
+            out[4] = stepTone(ct, chord, out[4], target2 >= target0 ? 1 : -1);
+    }
+    const int next = strongTone(s, st, sc, bar + 1, 0);
+    static const uint8_t passing[kEvolveCount] = { 35, 55, 70 }; // % of the weak beats
+    for (int b = 1; b < 4; b += 2)
+    {
+        const int left = out[b - 1];
+        const int right = b == 1 ? out[4] : next;
+        const uint32_t key = hookKey(s, bar, b);
+        const int lo = left < right ? left : right;
+        const int hi = left < right ? right : left;
+        if (b != endBeat && static_cast<int>(rnd(s, 307, key, 4) % 100) < passing[evolveIndex(s)] + (s.algo ? 10 : 0))
         {
-            static const int8_t tones[3] = { 0, 2, 4 };
-            degree = chord + tones[rnd(s, 130, key, 0) % 3];
-            if (rnd(s, 131, key, 0) % 100 < 35)
-                degree += sc.count;
-            started = true;
+            if (hi - lo >= 2)
+                out[b] = lo + (hi - lo) / 2; // a passing note
+            else
+                out[b] = (rnd(s, 308, key, 5) & 1) ? hi + 1 : lo - 1; // a neighbour note
         }
         else
         {
-            const int r = rnd(s, 132, key, static_cast<uint32_t>(p)) % 100;
-            const int roll = rnd(s, 133, key, static_cast<uint32_t>(p));
-            int dir = (roll & 1) ? 1 : -1;
-            int step;
-            if (fill && p >= 12)
+            const int target = contourHeight(s, st, sc, bar, b);
+            const bool upper = (rnd(s, 306, key, 3) & 1) != 0;
+            int tone = nearestTone(ct, chord, target, upper, b == endBeat ? cadenceKind(s, bar) : 0);
+            if (tone == left)
             {
-                dir = 1; // the run at the end of a fill bar climbs
-                step = 1 + (roll >> 1) % 2;
+                const int dir = target >= contourHeight(s, st, sc, bar, b - 1) ? 1 : -1;
+                if (b == endBeat && cadenceKind(s, bar) == 1)
+                    out[b - 1] = stepTone(ct, chord, left, -dir); // the closing root stays
+                else
+                    tone = stepToneFrom(ct, chord, tone, b == endBeat ? 1 : dir, b == endBeat && cadenceKind(s, bar) == 2);
             }
-            else if (r < st.still)
-                step = 0;
-            else if (r < st.still + st.leap)
-                step = dir * (3 + (roll >> 1) % 3);
-            else
-                step = dir * (((roll >> 1) % 10) < 7 ? 1 : 2);
-            degree += step;
+            out[b] = tone;
         }
-        while (degree > hi)
-            degree -= sc.count;
-        while (degree < lo)
-            degree += sc.count;
-        if (p % 4 == 0)
-            degree = snapToChord(degree, chord, sc.count);
     }
-    return degree;
+}
+
+// The scale degree the lead plays at 'pos' of a bar
+int leadDegree(const Setup& s, const Style& st, const Scale& sc, int bar, int pos)
+{
+    int cur[5];
+    leadBeats(s, st, sc, bar, cur);
+    const int beat = pos / 4;
+    const int k = pos % 4;
+    const int next = beat < 3 ? cur[beat + 1] : strongTone(s, st, sc, bar + 1, 0);
+    const int from = cur[beat];
+    const int lean = (beat == 1 && k < 3) ? cur[4] : next; // (the walk towards a cadence note starts like the hook)
+    const int d = lean - from;
+    const int ad = d > 0 ? d : -d;
+    const uint32_t key = hookKey(s, bar, beat);
+    const int od = (rnd(s, 340, key, static_cast<uint32_t>(k)) & 1) ? 1 : -1; // neighbour: above or below
+    const int dir = d > 0 ? 1 : (d < 0 ? -1 : od);
+
+    // the end of a fill bar: a run towards the next bar
+    if (isFillBar(s, bar) && pos >= 12 && bar + 1 < barCount(s))
+        return cur[3] + dir * (pos - 12);
+
+    // a note arriving a sixteenth early plays the note of the beat it anticipates
+    if (k == 3 && static_cast<unsigned>(bar) * kBarSteps + static_cast<unsigned>(pos) + 1 < s.length)
+    {
+        const bool nextIsBar = pos == kBarSteps - 1;
+        if (isAnticipated(s, st, nextIsBar ? bar + 1 : bar, nextIsBar ? 0 : beat + 1))
+            return next;
+    }
+    if (k == 0)
+        return from;
+    // a riff style repeats its note between the beats now and then
+    if (rnd(s, 341, key, static_cast<uint32_t>(k)) % 100 < st.still / 2)
+        return from;
+    switch (k)
+    {
+        case 1: return from + dir; // a step towards the next beat
+        case 2: // a neighbour note when the beats are close, a passing note halfway when they are not
+            return ad <= 1 ? from + od : from + dir * (ad / 2);
+        default: // the approach: a step before the next beat, from the far side when the beats are close
+            return ad <= 1 ? next + dir : next - dir;
+    }
 }
 
 Event leadEvent(const Setup& s, uint16_t offset)
@@ -1017,16 +1300,17 @@ Event leadEvent(const Setup& s, uint16_t offset)
     ev.velocity = static_cast<uint8_t>(clampInt(v, 30, 127));
     ev.note = static_cast<int16_t>(noteOfDegree(s, sc, leadDegree(s, st, sc, bar, pos)));
 
-    // The length: the style says how much of the time to the next note a note sounds; some notes
-    // are clipped, some held, and the last note of a phrase is held.
+    // The length: mostly legato (the style says how much), some notes short, some held; the last
+    // note of a bar that ends on a held note sounds until the next one.
     const int span = stepsToNext(s, 0, offset, kBarSteps);
-    int gate = st.leadGate;
+    int gate = 62 + st.leadGate * 38 / 100;
     const int r = rnd(s, 140, motifKey(s, bar), static_cast<uint32_t>(pos)) % 100;
-    if (r < 25)
-        gate -= 25;
-    else if (r < 45)
-        gate += 35;
-    if ((bar % kPhraseBars) == kPhraseBars - 1 && span >= 3 && pos >= 8)
+    if (r < 18)
+        gate -= 28;
+    else if (r < 40)
+        gate = 100;
+    const bool cadence = lastLeadPos(s, bar) < kBarSteps - 1 && pos + span >= kBarSteps;
+    if (cadence || ((bar % kPhraseBars) == kPhraseBars - 1 && span >= 3 && pos >= 8))
         gate = 100;
     ev.length = gatedLength(span, clampInt(gate, 15, 100));
     return ev;
