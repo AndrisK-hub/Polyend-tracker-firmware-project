@@ -51,6 +51,7 @@ constexpr uint32_t kAudioRingOffset = kBackBufferOffset - kAudioRingBytes;
 constexpr uint32_t kMinArena = 16 * 1024; // the cartridge may still need much more; load() tells
 constexpr uint32_t kReadChunk = 16 * 1024; // a multiple of 512, as the SD driver wants
 
+constexpr uint32_t kAudioSampleRate = 44118; // the audio engine's rate (44117.6 Hz)
 constexpr uint32_t kFrameMicros = 16639;    // NTSC: 60.0988 frames per second
 constexpr uint32_t kFrameMicrosPal = 19997; // PAL: 50.007 frames per second
 
@@ -121,23 +122,25 @@ uint8_t readPad()
     return p;
 }
 
-// A tiny 3x5 font for the numbers of the sound test: 0-9 and A-F, five rows of three bits each.
-constexpr uint16_t kGlyphs[16] = { 0x7B6F, 0x2C97, 0x73E7, 0x73CF, 0x5BC9, 0x79CF, 0x79EF, 0x7252,
-                                   0x7BEF, 0x7BCF, 0x7BED, 0x6BAE, 0x7927, 0x6B6E, 0x79E7, 0x79E4 };
+// A tiny 3x5 font for the numbers of the sound test: 0-9 and A-F, then the letters M W T P J S that
+// label the numbers; five rows of three bits each.
+constexpr uint16_t kGlyphs[22] = { 0x7B6F, 0x2C97, 0x73E7, 0x73CF, 0x5BC9, 0x79CF, 0x79EF, 0x7252,
+                                   0x7BEF, 0x7BCF, 0x7BED, 0x6BAE, 0x7927, 0x6B6E, 0x79E7, 0x79E4,
+                                   0x5FED, 0x5BFD, 0x7492, 0x7BE4, 0x126A, 0x388E };
 constexpr uint8_t kInfoBackground = 0x00; // black and white in the picture's colour format
 constexpr uint8_t kInfoForeground = 0xFF;
 constexpr int kInfoScale = 2;
 constexpr int kInfoAdvance = 4 * kInfoScale;
 constexpr int kInfoRowHeight = 6 * kInfoScale;
-constexpr int kInfoRows = 2;
-constexpr uint16_t kInfoFrames = 300; // about five seconds
+constexpr int kInfoRows = 4;
+constexpr uint16_t kInfoFrames = 900; // about fifteen seconds
 constexpr uint32_t kBeepSamples = 11025; // a quarter of a second
 constexpr int16_t kBeepLevel = 8000;
 constexpr uint32_t kBeepHalfPeriod = 25; // about 880 Hz
 
 void drawGlyph(uint8_t* frame, int x, int y, uint8_t index)
 {
-    const uint16_t bits = kGlyphs[index & 15];
+    const uint16_t bits = kGlyphs[index < 22 ? index : 0];
     for (int row = 0; row < 5; row++)
     {
         for (int col = 0; col < 3; col++)
@@ -155,9 +158,10 @@ void drawGlyph(uint8_t* frame, int x, int y, uint8_t index)
     }
 }
 
-// Draws capital hex digits (0-9, A-F); every other character is a gap.
+// Draws capital hex digits (0-9, A-F) and the labels M W T P J S; every other character is a gap.
 void drawInfoText(uint8_t* frame, int x, int y, const char* text)
 {
+    static const char kLabels[] = "MWTPJS"; // glyphs 16..21
     for (; *text != 0; text++, x += kInfoAdvance)
     {
         const char c = *text;
@@ -168,6 +172,16 @@ void drawInfoText(uint8_t* frame, int x, int y, const char* text)
         else if (c >= 'A' && c <= 'F')
         {
             drawGlyph(frame, x, y, static_cast<uint8_t>(c - 'A' + 10));
+        }
+        else
+        {
+            for (uint8_t i = 0; kLabels[i] != 0; i++)
+            {
+                if (kLabels[i] == c)
+                {
+                    drawGlyph(frame, x, y, static_cast<uint8_t>(16 + i));
+                }
+            }
         }
     }
 }
@@ -386,6 +400,9 @@ void cGameModule::start(uint32_t options)
     lastFrameSamples = 0;
     lastPeak = 0;
     lastFrameUs = 0;
+    maxPeak = 0;
+    sentPeakHold = 0;
+    selfTestPeak = 0;
 
     songTimer.hide();
     mtPadBoard.releaseAllInstruments();
@@ -399,6 +416,11 @@ void cGameModule::start(uint32_t options)
 
     memset(backBuffer, 0, kFrameBytes);
     console->setFrameBuffer(backBuffer);
+
+    // A fixed note through the real sound chip code on this device, before the game starts; the
+    // result (S on the sound test screen) tells "the chip is broken here" from "the game is quiet".
+    console->apu.setSampleRate(kAudioSampleRate); // kept by the reset at the end of the test
+    selfTestPeak = console->apuSelfTest();
 
     setMiniNavButtonLock(false);
 
@@ -515,6 +537,10 @@ void cGameModule::collectSound()
     }
     lastFrameSamples = total;
     lastPeak = peak;
+    if (peak > maxPeak)
+    {
+        maxPeak = peak;
+    }
 }
 
 void cGameModule::soundTest()
@@ -526,15 +552,23 @@ void cGameModule::soundTest()
     beepLeft = kBeepSamples;
     beepPhase = 0;
     soundInfoFrames = kInfoFrames;
+    nesAudio().takeSentPeak(); // T starts from this tap
+    sentPeakHold = 0;
 }
 
 // Numbers about the sound in the top left corner of the picture, all in hexadecimal:
 //   B  audio blocks the audio engine has asked for (counts up while the audio engine runs)
 //   F  samples waiting in the sound buffer
 //   A  1 = the sound stream is connected to the mixer, 2 = it is switched on (3 = both)
-//   C  samples the emulated sound chip made for the last picture (about 2DF)
-//   E  loudest of them (0 = the game is silent)
+//   C  samples the emulated sound chip made for the last picture (about 2DE)
+//   E  loudest of them (0 = the game is silent right now)
 //   D  milliseconds the emulator needed for the last picture (16 or less keeps up)
+//   M  loudest sound the chip has made since the game started (0 = nothing yet)
+//   W  writes to the sound chip's registers since the game started (0 = the game never asks for sound)
+//   T  loudest sample sent to the mixer since the Menu tap (about 1F40 or more once the beep is there)
+//   P  where the game's processor is now
+//   J  1 = the processor has stopped (the game crashed)
+//   S  loudest sample of the built-in test note (about 14CB when the sound chip works on this device)
 void cGameModule::drawSoundInfo()
 {
     char line[40];
@@ -550,6 +584,19 @@ void cGameModule::drawSoundInfo()
     snprintf(line, sizeof(line), "C%03X E%04X D%02X", static_cast<unsigned>(lastFrameSamples & 0xFFF),
              static_cast<unsigned>(lastPeak & 0xFFFF), static_cast<unsigned>((lastFrameUs / 1000) & 0xFF));
     drawInfoText(frame, 2, 1 + kInfoRowHeight, line);
+
+    const uint32_t sent = nesAudio().takeSentPeak();
+    if (sent > sentPeakHold)
+    {
+        sentPeakHold = sent;
+    }
+    snprintf(line, sizeof(line), "M%04X W%04X T%04X", static_cast<unsigned>(maxPeak & 0xFFFF),
+             static_cast<unsigned>(console->apu.writeCount & 0xFFFF), static_cast<unsigned>(sentPeakHold & 0xFFFF));
+    drawInfoText(frame, 2, 1 + 2 * kInfoRowHeight, line);
+
+    snprintf(line, sizeof(line), "P%04X J%X S%04X", static_cast<unsigned>(console->pc),
+             console->jammed ? 1u : 0u, static_cast<unsigned>(selfTestPeak & 0xFFFF));
+    drawInfoText(frame, 2, 1 + 3 * kInfoRowHeight, line);
 }
 
 void cGameModule::update()

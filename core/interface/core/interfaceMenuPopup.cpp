@@ -1,9 +1,13 @@
 #include "interfaceMenuPopup.h"
 #include "core/interface.h"
 
+#ifdef TRACKER_MINI
+#include "gameModule.h"
+#endif
+
 InterfaceMenuPopup mtMenuPopup;
 
-const uint8_t kMenuModulesCount = 11;
+const uint8_t kMenuModulesCount = 12;
 const char* const kModuleNamesList[kMenuModulesCount] = { "Pattern",
                                                           "Instrument Parameters",
                                                           "Sample Playback",
@@ -14,7 +18,8 @@ const char* const kModuleNamesList[kMenuModulesCount] = { "Pattern",
                                                           "Config",
                                                           "Perform",
                                                           "Sample Editor",
-                                                          "Sample Recorder" };
+                                                          "Sample Recorder",
+                                                          "Games" };
 
 #ifdef TRACKER_MINI
 
@@ -37,7 +42,9 @@ const InterfaceMenuPopup::ModuleRef InterfaceMenuPopup::modules[kMenuModulesCoun
     { mtInterface.modules[9], interfaceButtonPerformance, 0, &performModes },
     { mtInterface.modules[6], interfaceButtonSampleEdit, 0, nullptr },
     { mtInterface.modules[8], interfaceButtonSampleRec, 0, nullptr },
-
+    // The list of games lives on the Config screen; the module here is only a stand-in that never
+    // is the screen the Menu is opened from, so it can't take over the highlight from Config.
+    { &gameModule, interfaceButtonGame, kOpenGamesList, nullptr },
 };
 
 static void functLeftPopup();
@@ -297,6 +304,13 @@ void InterfaceMenuPopup::setModulePopupValue(int16_t value)
 
 void InterfaceMenuPopup::changeModuleMode()
 {
+    if (modules[menuFunctions[selectedBox]].button == interfaceButtonGame)
+    {
+        // the game list opens when Menu is let go, like any other box; there's no screen to keep
+        // the Menu open over
+        return;
+    }
+
     ModuleBase* destModule = sourceModule;
     uint32_t options = 0;
     bool srcIsDst = modules[menuFunctions[selectedBox]].module == sourceModule;

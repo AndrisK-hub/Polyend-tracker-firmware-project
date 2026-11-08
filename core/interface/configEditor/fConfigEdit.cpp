@@ -176,6 +176,12 @@ void cConfigEditor::start(uint32_t options)
             CE->refreshListsColors();
         }
     }
+#ifdef TRACKER_MINI
+    else if (options == kOpenGamesList)
+    {
+        openGamesList();
+    }
+#endif
 }
 
 void cConfigEditor::stop()
@@ -952,6 +958,20 @@ void cConfigEditor::launchSelectedGame()
 
     itemEditorClose(); // leave the Config screen tidy for when the game is quit
     eventFunct(eventActivateGameModule, this, nullptr, nullptr);
+}
+
+extern cMenuGroup menuGames;
+
+void cConfigEditor::openGamesList()
+{
+    // the same steps as walking there by hand: the Games group, its only item, Enter
+    changeMenuListPosition(0, menuGames.getSlot() - basemenuList.start);
+    menuGames.selectedItem = 0;
+    selectedPlace = 1;
+    refreshConfigMenu();
+    refreshListsColors();
+    menuGoIn();
+    activateLabelsBorder();
 }
 #endif
 

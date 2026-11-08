@@ -84,11 +84,18 @@ AUDIO_CORE_FLASH void AudioNesStream::update()
     const uint32_t t = tail;
     int16_t v = last;
     uint32_t i = 0;
+    uint32_t peak = sentPeak;
     for (; i < n; i++)
     {
         v = buf[(t + i) & mask];
         block->data[i] = v;
+        const uint32_t level = static_cast<uint32_t>(v < 0 ? -v : v);
+        if (level > peak)
+        {
+            peak = level;
+        }
     }
+    sentPeak = peak;
     // ran dry: let the last value fade away instead of cutting it off
     for (; i < AUDIO_BLOCK_SAMPLES; i++)
     {

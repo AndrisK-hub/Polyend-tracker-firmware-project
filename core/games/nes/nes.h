@@ -155,6 +155,9 @@ class Apu
     bool frameIrq = false;
     bool dmcIrq = false;
 
+    // writes to $4000-$4017 since power-on (wraps); the game screen shows it as a sign of life
+    uint32_t writeCount = 0;
+
     static constexpr int kAccSize = 1024; // finished samples wait here (a frame is ~735)
 
   private:
@@ -395,6 +398,11 @@ class Console
 
     // Runs the emulation until the picture chip has finished a frame.
     void runFrame();
+
+    // Plays one fixed note on a pulse channel for a frame through the sound chip (mixer, band-limiting
+    // and filters included) and returns the loudest sample: about 5000 when the chip works, 0 when it
+    // does not. Leaves the console in its power-on state afterwards, so call it before the game starts.
+    uint32_t apuSelfTest();
 
     void setPad(int pad, uint8_t buttons) { padState[pad & 1] = buttons; }
     void setFrameBuffer(uint8_t* p) { ppu.fb = p; }

@@ -60,6 +60,9 @@ class cGameModule : public ModuleBase
     uint32_t lastFrameSamples = 0;  // sound samples the last frame made
     uint32_t lastPeak = 0;          // loudest of them (before the beep)
     uint32_t lastFrameUs = 0;       // time the emulator needed for the last frame
+    uint32_t maxPeak = 0;           // loudest sound the chip has made since the start
+    uint32_t sentPeakHold = 0;      // loudest sample sent to the mixer since the last Menu tap
+    uint32_t selfTestPeak = 0;      // result of the built-in test note
 
     hControl titleText = -1;
     hControl detailText = -1;

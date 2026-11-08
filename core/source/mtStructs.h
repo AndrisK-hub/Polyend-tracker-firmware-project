@@ -412,6 +412,7 @@ static constexpr int kExternalClockCompMaxVal = 12;
 static constexpr int kExternalClockCompDefaultVal = kExternalClockCompMaxVal / 2;
 
 static constexpr int kOpenMetronomeConfig = 1;
+static constexpr int kOpenGamesList = 2;
 
 //=====================================================================
 //=====================================================================

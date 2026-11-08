@@ -332,4 +332,31 @@ void Console::runFrame()
     }
 }
 
+uint32_t Console::apuSelfTest()
+{
+    const int64_t t0 = cycles;
+    apu.write(0x4015, 0x01, t0); // pulse 1 on
+    apu.write(0x4000, 0xBF, t0); // duty 50 %, constant volume 15, length counter halted
+    apu.write(0x4002, 0xFD, t0); // period $0FD: about 440 Hz
+    apu.write(0x4003, 0x08, t0); // length index 1, restarts the note
+    apu.runTo(t0 + 29780);       // one frame
+    uint32_t peak = 0;
+    int16_t buf[128];
+    for (;;)
+    {
+        const int n = apu.readSamples(buf, 128);
+        if (n <= 0)
+            break;
+        for (int i = 0; i < n; i++)
+        {
+            const uint32_t level = static_cast<uint32_t>(buf[i] < 0 ? -buf[i] : buf[i]);
+            if (level > peak)
+                peak = level;
+        }
+    }
+    reset();
+    apu.writeCount = 0;
+    return peak;
+}
+
 } // namespace nes

@@ -515,6 +515,16 @@ void Interface::deactivateModule(hModule module)
 
 void Interface::switchModuleByButton(hModule module, uint8_t button, uint32_t options)
 {
+#ifdef TRACKER_MINI
+    if (button == interfaceButtonGame)
+    {
+        // the Games box of the Menu: the list of games is on the Config screen
+        deactivateModule(module);
+        activateModule(&configEditor, options > 0 ? options : kOpenGamesList);
+        return;
+    }
+#endif
+
     int8_t index = getButtonIndex(button);
     if (index < 0)
         return;

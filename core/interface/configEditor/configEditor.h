@@ -135,6 +135,8 @@ class cConfigEditor : public ModuleBase
     // Games square: lists the .nes files and starts the selected one
     void showGamesList(char** names, uint8_t count);
     void launchSelectedGame();
+    // lands on the game list, as if Config > Games > Play game had been entered by hand
+    void openGamesList();
     uint8_t gamesFoundNum = 0;
 #endif
     void updateFirmware(bool yes);

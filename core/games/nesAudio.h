@@ -38,6 +38,14 @@ class AudioNesStream : public AudioStream
     // counts up with every block the audio engine asks for, so the game loop can tell that the
     // audio clock is running
     uint32_t blocksRequested() const { return blocks; }
+    // The loudest sample sent on towards the mixer since the last call (then starts again from 0).
+    // Only for the diagnostics on the game screen.
+    uint32_t takeSentPeak()
+    {
+        const uint32_t peak = sentPeak;
+        sentPeak = 0;
+        return peak;
+    }
 
     virtual void update();
 
@@ -52,6 +60,7 @@ class AudioNesStream : public AudioStream
     volatile bool playing = false;
     volatile bool primed = false;
     volatile uint32_t blocks = 0;
+    volatile uint32_t sentPeak = 0;
     int16_t last = 0;
 };
 

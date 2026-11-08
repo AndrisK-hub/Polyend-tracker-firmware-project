@@ -494,6 +494,7 @@ void Apu::afterWrite(int64_t cycle)
 
 void Apu::write(uint16_t addr, uint8_t v, int64_t cpuCycle)
 {
+    writeCount++;
     advance(cpuCycle);
 
     switch (addr)
