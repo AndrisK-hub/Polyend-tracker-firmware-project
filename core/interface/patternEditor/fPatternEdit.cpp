@@ -4590,9 +4590,61 @@ void cPatternEditor::lightUpPadBoard()
     }
 }
 
+// Shift + centre button: select the whole track (column) from any cursor position, so there is no
+// need to scroll to the end of the track first. Pressed again: select all tracks. This gives the
+// same result as the built-in Shift+Up on step 0 (previousStep), without having to be on step 0.
+static void selectWholeTrackOrAll()
+{
+    // same rule as previousStep(): navigation is locked while the song plays in preview mode
+    if (PTE->editMode == 0 && !sequencer.isStop())
+    {
+        return;
+    }
+
+    if (PTE->trackerPattern.selectColumn == 1 && PTE->trackerPattern.selectState == 2)
+    {
+        // a whole track is already selected -> select everything
+        PTE->trackerPattern.selectStartStep = 0;
+        PTE->trackerPattern.selectStartTrack = 0;
+        PTE->trackerPattern.selectEndStep = PTE->trackerPattern.patternLength - 1;
+        PTE->trackerPattern.selectEndTrack = kAllTracks - 1;
+    }
+    else
+    {
+        PTE->trackerPattern.selectColumn = 1;
+        PTE->trackerPattern.selectStartStep = 0;
+        PTE->trackerPattern.selectStartTrack = PTE->trackerPattern.actualTrack;
+        PTE->trackerPattern.selectEndStep = PTE->trackerPattern.patternLength - 1;
+        PTE->trackerPattern.selectEndTrack = PTE->trackerPattern.actualTrack;
+    }
+
+    PTE->trackerPattern.selectState = 2;
+    PTE->isSelectingNow = 1;
+
+    PTE->showFxInfo();
+    PTE->refreshPattern();
+    PTE->lightUpPadBoard();
+}
+
+// set when a press was used for the selection above, so that its release is swallowed too
+static bool miniMiddleUsedForSelect = false;
+
 // tracker mini middle button
 static void functMiniMiddle(uint8_t state)
 {
+    if (state == buttonRelease && miniMiddleUsedForSelect)
+    {
+        // Shift may be let go before the centre button: don't run the normal release action
+        // (note off / cursor move) for a press that never started it
+        miniMiddleUsedForSelect = false;
+        return;
+    }
+
+    if (state == buttonPress)
+    {
+        miniMiddleUsedForSelect = false;
+    }
+
     // oblsuga klawiatury
     if (PTE->keyboardManager.getState())
     {
@@ -4608,6 +4660,14 @@ static void functMiniMiddle(uint8_t state)
     // obluga popupu fill
     if (PTE->fillState > 0)
     {
+        return;
+    }
+
+    // Shift + centre = select the whole track (again = all tracks)
+    if (state == buttonPress && PTE->buttons->isButtonPressed(interfaceButtonShift))
+    {
+        miniMiddleUsedForSelect = true;
+        selectWholeTrackOrAll();
         return;
     }
 

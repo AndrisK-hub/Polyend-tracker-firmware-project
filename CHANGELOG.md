@@ -80,6 +80,13 @@ All notable changes to the **Polyend Tracker Community Edition (CE)** firmware a
    * The pattern is saved to the undo history first, so **`Undo` brings it back**.
    * No file format change.
 
+8. **Select the whole track in one press: `Shift` + middle button (Tracker Mini)**
+   * In the Pattern Editor, **`Shift` + the middle button** (the round one inside the cursor keys) selects the entire current track from any cursor position, so there is no need to scroll down to the last step first. Press it **again** to select all tracks.
+   * It gives the same selection as the existing `Shift` + `Up` on the first step (which selects the track, and then all tracks), and `Shift` + `Left` / `Right` still widens the selection by whole tracks afterwards. Copy, cut, delete, Fill and the other selection functions work on it as on any other selection; a plain cursor key clears it.
+   * The middle button does nothing else while `Shift` is held (no note entry, no step preview). Without `Shift` it works as before.
+   * In preview mode (green cursor) the selection is only changed while the sequencer is stopped, like the other cursor keys.
+   * No file format change.
+
 ### Fixed
 
 1. **`Gate length` FX is no longer ignored on steps that also have `Micro-move`.** The gate length is now carried along with the step until the delayed note actually starts. Patterns that combine both on one step will now play their gate; before, the note kept ringing.
