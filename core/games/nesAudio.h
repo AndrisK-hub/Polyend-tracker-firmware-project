@@ -3,6 +3,10 @@
 // The game loop (main thread) writes the samples the emulated sound chip makes into a ring buffer;
 // the audio engine takes them out again, one block at a time, from its interrupt. The buffer is
 // plain memory the caller provides, so nothing is reserved while no game runs.
+//
+// The one instance is made by the audio engine (audioEngine::getNesStream()), not as a global here:
+// the engine connects it to the mixer while it is being constructed, and the constructor of an audio
+// stream clears its connections, so it must exist before that.
 #ifndef GAMES_NESAUDIO_H_
 #define GAMES_NESAUDIO_H_
 
@@ -50,8 +54,6 @@ class AudioNesStream : public AudioStream
     volatile uint32_t blocks = 0;
     int16_t last = 0;
 };
-
-extern AudioNesStream nesAudioStream;
 
 #endif // TRACKER_MINI
 

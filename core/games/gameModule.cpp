@@ -19,6 +19,12 @@
 extern uint8_t externalRamScratchBuff[];
 extern void setMiniNavButtonLock(bool enabled);
 
+// The sound stream is owned by the audio engine (see nesAudio.h).
+static inline AudioNesStream& nesAudio()
+{
+    return *engine.getNesStream();
+}
+
 cGameModule gameModule;
 
 namespace {
@@ -398,9 +404,9 @@ void cGameModule::start(uint32_t options)
 
     // the sound goes to the audio engine through a ring buffer at the end of the scratch memory
     frameMicros = console->palTiming ? kFrameMicrosPal : kFrameMicros;
-    nesAudioStream.begin(reinterpret_cast<int16_t*>(externalRamScratchBuff + kAudioRingOffset), kAudioRingSamples);
+    nesAudio().begin(reinterpret_cast<int16_t*>(externalRamScratchBuff + kAudioRingOffset), kAudioRingSamples);
     engine.setNesSoundEnabled(true);
-    lastAudioBlocks = nesAudioStream.blocksRequested();
+    lastAudioBlocks = nesAudio().blocksRequested();
     lastAudioProgressUs = platform->getTimer()->micros();
 
     ip->setButtonObj(interfaceButtonUp, functUp);
@@ -428,7 +434,7 @@ void cGameModule::stop()
 
     // the sound buffer lives in the memory the game used; shut it out before anything else does
     engine.setNesSoundEnabled(false);
-    nesAudioStream.end();
+    nesAudio().end();
 
     if (state == kStateRunning)
     {
@@ -505,7 +511,7 @@ void cGameModule::collectSound()
             samples[i] = static_cast<int16_t>(mixed);
         }
 
-        nesAudioStream.push(samples, static_cast<uint32_t>(count));
+        nesAudio().push(samples, static_cast<uint32_t>(count));
     }
     lastFrameSamples = total;
     lastPeak = peak;
@@ -536,9 +542,9 @@ void cGameModule::drawSoundInfo()
 
     memset(frame, kInfoBackground, 256 * (kInfoRows * kInfoRowHeight + 2));
 
-    const unsigned flags = (nesAudioStream.isActive() ? 1u : 0u) | (nesAudioStream.isRunning() ? 2u : 0u);
-    snprintf(line, sizeof(line), "B%04X F%04X A%X", static_cast<unsigned>(nesAudioStream.blocksRequested() & 0xFFFF),
-             static_cast<unsigned>(nesAudioStream.fill() & 0xFFFF), flags);
+    const unsigned flags = (nesAudio().isActive() ? 1u : 0u) | (nesAudio().isRunning() ? 2u : 0u);
+    snprintf(line, sizeof(line), "B%04X F%04X A%X", static_cast<unsigned>(nesAudio().blocksRequested() & 0xFFFF),
+             static_cast<unsigned>(nesAudio().fill() & 0xFFFF), flags);
     drawInfoText(frame, 2, 1, line);
 
     snprintf(line, sizeof(line), "C%03X E%04X D%02X", static_cast<unsigned>(lastFrameSamples & 0xFFF),
@@ -560,18 +566,18 @@ void cGameModule::update()
     // The sound card takes samples at a fixed rate, so keeping a steady amount of sound waiting
     // paces the game exactly and keeps picture and sound together. If the audio engine has not asked
     // for sound lately, the timer sets the pace instead.
-    const uint32_t blocks = nesAudioStream.blocksRequested();
+    const uint32_t blocks = nesAudio().blocksRequested();
     if (blocks != lastAudioBlocks)
     {
         lastAudioBlocks = blocks;
         lastAudioProgressUs = now;
     }
     const bool audioClock =
-      nesAudioStream.isRunning() && static_cast<int32_t>(now - lastAudioProgressUs) < kAudioStallUs;
+      nesAudio().isRunning() && static_cast<int32_t>(now - lastAudioProgressUs) < kAudioStallUs;
 
     if (audioClock)
     {
-        if (nesAudioStream.fill() > kAudioTargetFill)
+        if (nesAudio().fill() > kAudioTargetFill)
         {
             return; // enough sound waiting; not time for the next frame yet
         }

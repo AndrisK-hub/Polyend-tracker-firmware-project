@@ -4,8 +4,6 @@
 
 #include "config.h"
 
-AudioNesStream nesAudioStream;
-
 namespace {
 
 inline void compilerBarrier()

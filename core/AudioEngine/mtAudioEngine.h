@@ -16,6 +16,10 @@
 #include <map>
 #include <optional>
 
+#ifdef TRACKER_MINI
+class AudioNesStream;
+#endif
+
 namespace mtAudioEngineConstans
 {
 constexpr uint32_t SKIP_MODIFICATION_THIS_VALUE = 1000000;
@@ -156,6 +160,10 @@ class audioEngine
     void makeMetronomeTick(uint8_t);
     // lets the sound of a running NES game (Tracker Mini) through to the output, or shuts it out
     void setNesSoundEnabled(bool enabled);
+#ifdef TRACKER_MINI
+    // the sound of a running game, an input of the final mixer (made in the constructor)
+    AudioNesStream* getNesStream() { return nesStream; }
+#endif
     void setBlockedInstrument(int8_t idx);
     void clearBlockedInstrument(int8_t idx);
     void setBlockedNoteOnFromInstrument(int8_t idx);
@@ -237,6 +245,11 @@ class audioEngine
     AudioPlaySdWav playerWavFromSD;
     AudioSynthWaveform testWaveform;
     AudioPlayMemory metronomeTick;
+#ifdef TRACKER_MINI
+    // Not a global of its own file: the connections to the mixers are made while this object is
+    // constructed, and a global in another file may be constructed later, which would reset them.
+    AudioNesStream* nesStream = nullptr;
+#endif
     MixerAndFxs<kVoices> mixerAndFxs;
 
 #ifdef FEATURE_SYNTH

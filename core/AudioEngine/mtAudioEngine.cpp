@@ -695,6 +695,15 @@ void audioEngine::connectSynthToOutput(SynthVoice* synth, AudioOutput* output)
 #endif
 void audioEngine::connectSpecialInputsToOutput(AudioOutput* output)
 {
+#ifdef TRACKER_MINI
+    // Made here, right before it is connected. As a global of its own file it could be constructed
+    // after this object, and the constructor of an audio stream clears its connections: the engine
+    // would then never ask it for sound (the games were silent).
+    if (nesStream == nullptr)
+    {
+        nesStream = new AudioNesStream();
+    }
+#endif
     for (int channel = 0; channel < AudioOutput::OutputChannels::kChannelsCount; channel++)
     {
         connections.push_back(
@@ -714,7 +723,7 @@ void audioEngine::connectSpecialInputsToOutput(AudioOutput* output)
                               AudioOutput::FinalMixInputs::kMetronomeTick));
 #ifdef TRACKER_MINI
         connections.push_back(
-          new AudioConnection(&nesAudioStream,
+          new AudioConnection(nesStream,
                               0,
                               output->getFinalMixer((AudioOutput::OutputChannels)channel),
                               AudioOutput::FinalMixInputs::kNesEmulatorSound));
