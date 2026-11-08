@@ -62,7 +62,7 @@ class Sequencer
         fillStepByStep,
         fillStepEuclidean,
         fillStepDrums,
-        // Generative parts (Tracker Mini): a whole song, or a drum, ambient, bass or lead part
+        // Generative parts (Tracker Mini): a whole song, or a drum, ambient, bass, lead or drone part
         // that evolves over the selection. They write notes, instruments and volumes by
         // themselves, so they are only offered when the notes are filled (see fillGenerative()).
         // A song fills the selected tracks in turn with a lead, a bassline and then the drums.
@@ -73,6 +73,7 @@ class Sequencer
         fillStepGenAmbient,
         fillStepGenBass,
         fillStepGenLead,
+        fillStepGenDrone,
         fillStepEnd__
     };
     static constexpr int MAX_FILL_DENSITY = 128;

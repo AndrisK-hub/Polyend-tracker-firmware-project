@@ -169,6 +169,7 @@ void cPatternEditor::initExternalRamState()
         fillData[i].density[Sequencer::fillStepGenAmbient] = 1;
         fillData[i].density[Sequencer::fillStepGenBass] = 1;
         fillData[i].density[Sequencer::fillStepGenLead] = 1;
+        fillData[i].density[Sequencer::fillStepGenDrone] = 13; // Ambient
         fillData[i].song = Sequencer::kSongFirst; // song 1
         fillData[i].fillStep = Sequencer::fillStepByStep;
     }

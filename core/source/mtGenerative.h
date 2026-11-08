@@ -1,5 +1,5 @@
-// Generative parts for Fill > Where?: drums, ambient pads, a bassline and a lead that evolve over
-// the selected steps (Tracker Mini).
+// Generative parts for Fill > Where?: drums, ambient pads, a bassline, a lead and a drone that
+// evolve over the selected steps (Tracker Mini).
 //
 // Everything here is a pure function of (setup, lane, step): no state is kept, so the same setup
 // always gives the same music and every part of one song agrees on the form (intro, build, breakdown,
@@ -26,6 +26,7 @@ enum Mode : uint8_t
     kAmbient,
     kBass,
     kLead,
+    kDrone,
     kModeCount
 };
 
@@ -45,6 +46,7 @@ constexpr int kDrumLanes = 6;
 constexpr int kAmbientVoices = 4;
 constexpr int kBassVoices = 1;
 constexpr int kLeadVoices = 1;
+constexpr int kDroneVoices = 4; // the ground note, the fifth, a colour tone and a high shimmer
 constexpr int kMicroStepsPerStep = 48; // the unit of Event::length
 constexpr int kSongCount = 99;         // classic songs 1..99 per style
 constexpr int kAlgoSongCount = 99;     // algo songs 1..99 per style

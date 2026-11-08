@@ -67,18 +67,19 @@ const char* ptrfillScaleFilterNames[fillScaleFilterCount] = {
     &fillScaleFilterLabels[1][0],
 };
 //------------------------------------------------------------
-static const uint8_t fillStepCount = 14;
+static const uint8_t fillStepCount = 15;
 static_assert(fillStepCount == Sequencer::fillStepEnd__, "one name for every fill step rule");
 const char fillStepLabels[fillStepCount][11] = {
     "Note",  "No Note", "Fx",       "No Fx",    "Random",   "Each",
     "Euclidean", "Drums", "Gen Song", "Algo Song", "Gen Drum", "Gen Ambi", "Gen Bass", "Gen Lead",
+    "Gen Drone",
 };
 
 const char* ptrfillStepNames[fillStepCount] = {
     &fillStepLabels[0][0], &fillStepLabels[1][0], &fillStepLabels[2][0], &fillStepLabels[3][0],
     &fillStepLabels[4][0], &fillStepLabels[5][0], &fillStepLabels[6][0], &fillStepLabels[7][0],
     &fillStepLabels[8][0], &fillStepLabels[9][0], &fillStepLabels[10][0], &fillStepLabels[11][0],
-    &fillStepLabels[12][0], &fillStepLabels[13][0],
+    &fillStepLabels[12][0], &fillStepLabels[13][0], &fillStepLabels[14][0],
 };
 //------------------------------------------------------------
 
@@ -805,7 +806,8 @@ void cPatternEditor::refreshFillType()
                                    Sequencer::isSongFill(fillData[fillIdx].fillStep) ||
                                        fillData[fillIdx].fillStep == Sequencer::fillStepGenAmbient ||
                                        fillData[fillIdx].fillStep == Sequencer::fillStepGenBass ||
-                                       fillData[fillIdx].fillStep == Sequencer::fillStepGenLead
+                                       fillData[fillIdx].fillStep == Sequencer::fillStepGenLead ||
+                                       fillData[fillIdx].fillStep == Sequencer::fillStepGenDrone
                                      ? "Register"
                                      : "Note");
         }
@@ -1165,6 +1167,7 @@ void cPatternEditor::refreshFillDensity()
         case Sequencer::fillStepGenAmbient:
         case Sequencer::fillStepGenBass:
         case Sequencer::fillStepGenLead:
+        case Sequencer::fillStepGenDrone:
             // 0 = Random, 1.. = the styles (SynthPop, Techno, ...)
             labelText = "Style";
             {
@@ -1210,8 +1213,9 @@ void cPatternEditor::refreshFillStep()
     // a generative part sits at a register: bring a very low note up to something playable
     if (isFillGenerative() && fillData[fillIdx].from < 24)
     {
-        // bass low, pads in the middle, the lead above them (a song: the register of its lead)
-        fillData[fillIdx].from = (fillData[fillIdx].fillStep == Sequencer::fillStepGenBass) ?
+        // bass and drone low, pads in the middle, the lead above them (a song: the register of its lead)
+        fillData[fillIdx].from = (fillData[fillIdx].fillStep == Sequencer::fillStepGenBass ||
+                                  fillData[fillIdx].fillStep == Sequencer::fillStepGenDrone) ?
                                    48 :
                                    ((fillData[fillIdx].fillStep == Sequencer::fillStepGenLead ||
                                      Sequencer::isSongFill(fillData[fillIdx].fillStep)) ?

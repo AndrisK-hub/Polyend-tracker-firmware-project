@@ -1316,6 +1316,279 @@ Event leadEvent(const Setup& s, uint16_t offset)
     return ev;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Drone: a few notes that hold for bars and slowly change.
+//  * Four voices: the ground (the key note), the fifth, a colour tone (a second, a third, a seventh
+//    ... as the style likes it) and a quiet high shimmer. They enter one after the other.
+//  * Every voice plays its own schedule of notes of 1 to 16 bars (mostly 2 and more). A schedule is made of spans
+//    (4, 8 or 16 bars) that are cut into notes by a table of partitions, so the notes of the voices
+//    start at different bars and the drone never changes all at once. The style sets the pace of the
+//    changes (Ambient the slowest, Techno and DnB the quickest), Evolve makes it slower or faster,
+//    the ground is the slowest voice and the shimmer the quickest.
+//  * The ground note follows a slow root line: Gentle stays on the key note, Normal and Wild move
+//    to other degrees of the style's progression now and then and come back. The other voices pick
+//    their note when they start, so the harmony shifts gradually.
+//  * Every note comes in at its own intensity: a slow wave (a different period for every voice)
+//    sets how loud the voice is, a little chance shakes it; a note ends a little early now and
+//    then, and the shimmer and the colour tone rest for a note now and then.
+//  * Every note is snapped to the scale, so the Scale setting is what the drone is made of.
+struct DroneStyle
+{
+    uint8_t pace;    // 0 = the slowest table .. 4 = the quickest
+    uint8_t colours; // which set of colour tones
+    int8_t loud;     // added to the velocity
+};
+
+constexpr DroneStyle droneStyles[kStyleCount] = {
+    { 2, 5, 0 },  // SynthPop: bright
+    { 2, 1, -2 }, // NewWave: thirds
+    { 2, 5, 2 },  // Italo
+    { 2, 3, 2 },  // Disco: sevenths
+    { 2, 3, 2 },  // House
+    { 3, 2, 6 },  // Techno: dark
+    { 3, 2, 8 },  // EBM
+    { 2, 0, 4 },  // Electro: open
+    { 3, 0, 0 },  // Breaks
+    { 2, 3, 2 },  // HipHop
+    { 1, 2, 6 },  // Trap: dark and slow
+    { 3, 4, 0 },  // DnB: airy and quick
+    { 0, 4, -6 }, // Ambient: airy, the slowest and softest
+};
+
+// colour tones: semitones above the octave of the ground (snapped to the scale)
+constexpr int8_t kDroneColours[6][4] = {
+    { 2, 5, 2, 9 },   // open: second, fourth, sixth
+    { 3, 4, 3, 10 },  // thirds
+    { 1, 3, 6, 10 },  // dark: flat second, minor third, tritone, flat seventh
+    { 10, 11, 3, 4 }, // sevenths
+    { 2, 4, 9, 2 },   // airy: second, third, sixth
+    { 4, 9, 11, 2 },  // bright: third, sixth, major seventh, ninth
+};
+
+// How a span is cut into notes (in bars). The table is the pace of the voice, a span is 16, 8 or
+// 4 bars long. A zero ends the list.
+constexpr uint8_t kDroneSpanBars[5] = { 16, 16, 8, 8, 4 };
+constexpr uint8_t kDronePartitions[5][8][5] = {
+    { { 16 }, { 16 }, { 16 }, { 10, 6 }, { 12, 4 }, { 8, 8 }, { 6, 10 }, { 16 } },
+    { { 16 }, { 10, 6 }, { 8, 8 }, { 12, 4 }, { 6, 10 }, { 8, 4, 4 }, { 4, 4, 8 }, { 5, 5, 6 } },
+    { { 8 }, { 4, 4 }, { 5, 3 }, { 3, 5 }, { 6, 2 }, { 8 }, { 2, 3, 3 }, { 4, 2, 2 } },
+    { { 4, 4 }, { 3, 5 }, { 2, 2, 4 }, { 3, 2, 3 }, { 4, 2, 2 }, { 2, 4, 2 }, { 3, 3, 2 }, { 2, 2, 2, 2 } },
+    { { 2, 2 }, { 4 }, { 1, 3 }, { 3, 1 }, { 2, 2 }, { 4 }, { 2, 2 }, { 1, 1, 2 } },
+};
+
+// the bar where a voice comes in: the ground at once, the others one after the other
+int droneEnterBar(const Setup& s, int voice)
+{
+    if (voice <= 0)
+        return 0;
+    const int bars = barCount(s);
+    int gap = bars >= 8 ? (evolveIndex(s) == kGentle ? 3 : (evolveIndex(s) == kNormal ? 2 : 1)) :
+                          (bars >= 4 ? 1 : 0);
+    if (s.algo && gap > 0)
+        gap += rnd(s, 410, static_cast<uint32_t>(voice), 0) & 1;
+    const int enter = voice * gap;
+    return enter > (bars - 1) / 2 ? (bars - 1) / 2 : enter;
+}
+
+// which table of partitions a voice uses in a block of 16 bars
+int droneTable(const Setup& s, int voice, int block)
+{
+    static const int8_t evolveStep[kEvolveCount] = { -1, 0, 1 };
+    static const int8_t voiceStep[kDroneVoices] = { -1, 0, 0, 1 };
+    int table = droneStyles[s.style % kStyleCount].pace + evolveStep[evolveIndex(s)] + voiceStep[voice];
+    if (s.algo)
+        table += static_cast<int>(rnd(s, 411, static_cast<uint32_t>(block), static_cast<uint32_t>(voice)) % 3) - 1;
+    return clampInt(table, 0, 4);
+}
+
+struct DroneSegment
+{
+    int start; // the bar where the note starts
+    int bars;  // bars until the next note of the voice
+};
+
+DroneSegment droneSegment(const Setup& s, int voice, int bar)
+{
+    const int enter = droneEnterBar(s, voice);
+    const int t = bar - enter;
+    const int block = t / 16;
+    const int within = t % 16;
+    const int table = droneTable(s, voice, block);
+    const int span = kDroneSpanBars[table];
+    const int sub = within / span;
+    const int j = within % span;
+    const uint8_t* part =
+      kDronePartitions[table][rnd(s, 412, static_cast<uint32_t>(block * 4 + sub), static_cast<uint32_t>(voice)) % 8];
+    int acc = 0;
+    for (int i = 0; i < 5 && part[i] != 0; i++)
+    {
+        if (j < acc + part[i])
+            return { enter + block * 16 + sub * span + acc, part[i] };
+        acc += part[i];
+    }
+    return { bar, 1 };
+}
+
+// a voice other than the ground rests for a note now and then (never the one it comes in with)
+bool droneRests(const Setup& s, int voice, int startBar)
+{
+    static const uint8_t chance[kDroneVoices] = { 0, 4, 12, 28 };
+    static const uint8_t scale[kEvolveCount] = { 70, 100, 150 };
+    if (voice == 0 || startBar == droneEnterBar(s, voice))
+        return false;
+    return percentOf(s, 413, static_cast<uint32_t>(startBar), static_cast<uint32_t>(voice)) <
+           chance[voice] * scale[evolveIndex(s)] / 100;
+}
+
+// the degree the ground note sits on in this bar
+int droneRootDegree(const Setup& s, const Style& st, int bar)
+{
+    const int ev = evolveIndex(s);
+    if (ev == kGentle && !s.algo)
+        return 0; // a pedal on the key note
+    const int span = ev == kWild ? 4 : (ev == kNormal ? 8 : 16);
+    const int k = bar / span;
+    if (k == 0)
+        return 0;
+    static const uint8_t tonic[kEvolveCount] = { 70, 55, 30 }; // % of the spans on the key note
+    if (percentOf(s, 414, static_cast<uint32_t>(k), 0) < tonic[ev])
+        return 0;
+    unsigned palette = 0;
+    for (int i = 0; i < 4; i++)
+        palette |= 1u << (st.prog[i] % 7);
+    if (ev == kNormal)
+        palette |= (1u << 3) | (1u << 4);
+    else if (ev == kWild)
+        palette = 0x7Fu;
+    palette &= ~1u;
+    int count = 0;
+    for (int d = 1; d < 7; d++)
+        count += (palette >> d) & 1u;
+    if (count == 0)
+        return 0;
+    int pick = static_cast<int>(rnd(s, 415, static_cast<uint32_t>(k), 0) % count);
+    for (int d = 1; d < 7; d++)
+    {
+        if (((palette >> d) & 1u) != 0 && pick-- == 0)
+            return d;
+    }
+    return 0;
+}
+
+bool inScale(const Setup& s, const Scale& sc, int note)
+{
+    const int pc = ((note - s.root) % 12 + 12) % 12;
+    for (int i = 0; i < sc.count; i++)
+    {
+        if (sc.semis[i] == pc)
+            return true;
+    }
+    return false;
+}
+
+// the note of the scale nearest to a pitch (the lower one when two are equally near)
+int droneSnap(const Setup& s, const Scale& sc, int target)
+{
+    for (int k = 0; k <= 6; k++)
+    {
+        if (inScale(s, sc, target - k))
+            return target - k;
+        if (inScale(s, sc, target + k))
+            return target + k;
+    }
+    return target;
+}
+
+// the ground note of a degree, kept within a fourth below and a tritone above the key note
+int droneGround(const Setup& s, const Scale& sc, int degree)
+{
+    const int base = noteOfDegree(s, sc, 0);
+    int ground = noteOfDegree(s, sc, degree);
+    while (ground - base > 6)
+        ground -= 12;
+    while (ground - base < -5)
+        ground += 12;
+    return ground;
+}
+
+int dronePitch(const Setup& s, const Style& st, const Scale& sc, int voice, int startBar)
+{
+    const int ground = droneGround(s, sc, droneRootDegree(s, st, startBar));
+    if (voice == 0)
+        return ground;
+    int target = ground + 7;
+    if (voice == 2)
+    {
+        const int pick = static_cast<int>(rnd(s, 416, static_cast<uint32_t>(startBar), 2) % 4);
+        target = ground + 12 + kDroneColours[droneStyles[s.style % kStyleCount].colours][pick];
+    }
+    else if (voice == 3)
+    {
+        static const int8_t high[4] = { 24, 19, 24, 26 };
+        const int choices = evolveIndex(s) == kGentle ? 2 : 4;
+        target = ground + high[rnd(s, 417, static_cast<uint32_t>(startBar), 3) % choices];
+    }
+    while (target > 120)
+        target -= 12;
+    return droneSnap(s, sc, target);
+}
+
+// how loud a note comes in: a slow wave per voice, a little chance on top
+int droneVelocity(const Setup& s, int voice, int startBar)
+{
+    static const int8_t centre[kDroneVoices] = { 86, 76, 68, 58 };
+    static const uint8_t halfRange[kEvolveCount] = { 9, 16, 26 };
+    static const uint8_t jitter[kEvolveCount] = { 3, 5, 8 };
+    static const uint8_t period[kEvolveCount][kDroneVoices] = {
+        { 40, 32, 28, 24 }, { 24, 20, 16, 12 }, { 12, 10, 8, 6 }
+    };
+    const int ev = evolveIndex(s);
+    const int p = period[ev][voice];
+    const int phase = static_cast<int>(rnd(s, 418, static_cast<uint32_t>(voice), 0)) % (2 * p);
+    int x = (startBar + phase) % (2 * p);
+    if (x > p)
+        x = 2 * p - x;
+    const int wave = x * 256 / p; // 0 .. 256
+    const int chance =
+      static_cast<int>(rnd(s, 419, static_cast<uint32_t>(startBar), static_cast<uint32_t>(voice))) %
+        (2 * jitter[ev] + 1) -
+      jitter[ev];
+    const int v = centre[voice] + droneStyles[s.style % kStyleCount].loud + (wave - 128) * halfRange[ev] / 128 + chance;
+    return clampInt(v, 20, 120);
+}
+
+Event droneEvent(const Setup& s, uint8_t voice, uint16_t offset)
+{
+    Event ev;
+    if (voice >= kDroneVoices || (offset % kBarSteps) != 0)
+        return ev;
+    const int bar = offset / kBarSteps;
+    if (bar < droneEnterBar(s, voice))
+        return ev;
+    const DroneSegment seg = droneSegment(s, voice, bar);
+    if (seg.start != bar || droneRests(s, voice, bar))
+        return ev;
+
+    const Style& st = styles[s.style % kStyleCount];
+    const Scale sc = effectiveScale(s, st);
+    ev.on = true;
+    ev.velocity = static_cast<uint8_t>(droneVelocity(s, voice, bar));
+    ev.note = static_cast<int16_t>(dronePitch(s, st, sc, voice, bar));
+
+    // a note rings for its bars, or lets go a little early (a breath before the next one)
+    static const uint8_t gates[kEvolveCount][5] = { { 100, 100, 100, 96, 100 },
+                                                    { 100, 100, 94, 82, 100 },
+                                                    { 100, 88, 72, 58, 100 } };
+    const int gate = gates[evolveIndex(s)][rnd(s, 420, static_cast<uint32_t>(bar), voice) % 5];
+    int steps = seg.bars * kBarSteps * gate / 100;
+    if (steps < 12)
+        steps = 12;
+    if (offset + steps > s.length)
+        steps = s.length - offset; // a note never rings past the selection
+    ev.length = static_cast<uint16_t>(steps * kMicroStepsPerStep);
+    return ev;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------------------------
@@ -1334,6 +1607,7 @@ int laneCount(uint8_t mode)
         case kAmbient: return kAmbientVoices;
         case kBass: return kBassVoices;
         case kLead: return kLeadVoices;
+        case kDrone: return kDroneVoices;
         default: return 0;
     }
 }
@@ -1419,6 +1693,7 @@ Event stepEvent(const Setup& s, uint8_t lane, uint16_t offset)
         case kAmbient: return ambientEvent(s, lane, offset);
         case kBass: return lane == 0 ? bassEvent(s, offset) : Event();
         case kLead: return lane == 0 ? leadEvent(s, offset) : Event();
+        case kDrone: return droneEvent(s, lane, offset);
         default: return Event();
     }
 }
