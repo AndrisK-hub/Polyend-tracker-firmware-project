@@ -111,6 +111,15 @@ All notable changes to the **Polyend Tracker Community Edition (CE)** firmware a
    * Check done on the generator and the fill code (not on the device): about 19 million automatic checks (notes only on bar starts, in the scale and the range, never past the next note or the end of the selection, voices entering in order, lengths and intensity by Evolve, style and voice, rests, root drift per Evolve), the real fill code on simulated patterns (all voices, styles, Evolve modes, songs, with empty and messy patterns: every written length plays back exactly), and 20 deliberate breakages of the drone code that the checks catch. It has **not** been listened to on a Tracker Mini yet; the note lengths, the pace per style and the colour tones are a first guess, tell me what to change.
    * Original Tracker and Tracker+ do not get this entry. No file format change.
 
+10. **Change the instrument of a whole track: `Shift` + `Inst` + track button (Tracker Mini only)**
+   * In the Pattern Editor, hold **`Shift`** and **`Inst`** and press one of the **eight track buttons** under the screen (the ones that mute a track while `Shift` is held): every **note** of that track gets the instrument you have selected, the one shown in the `Inst` list (the instrument you used or picked last). Empty steps and note-off steps are left alone, and so are the volume, the FX and the notes of all other tracks.
+   * Pick the instrument first: hold `Inst` and choose it with the encoder or `+1` / `-1` / `+10` / `-10`, then (still holding `Inst`) press `Shift` and then the track button. Holding `Shift` first and then `Inst` works too, with the instrument chosen earlier.
+   * It needs **edit mode** (like paste or delete); otherwise a short message says so. The track buttons show the tracks of the group the cursor is in (sample tracks, or MIDI tracks), like the mute buttons.
+   * The notes of the **visible length of that track** change (steps past the pattern length are left alone). It is **one `Undo` step**, and nothing is stored when every note already uses that instrument.
+   * A **sample instrument cannot go on a MIDI track**; a short message says so and nothing is changed (synth and MIDI instruments can go on any track, sample instruments only on the sample tracks).
+   * Without `Inst`, `Shift` + a track button mutes the track as before. Original Tracker and Tracker+ do not get this entry. No file format change.
+   * Check done on the real function cut from the source (not on the device): every track with every instrument on simulated patterns against an independent model (only real notes inside the track length change, nothing else, one undo step, none when nothing changes, refusals leave the pattern untouched), and a check that deliberately broken versions of the function fail the tests.
+
 ### Fixed
 
 1. **`Gate length` FX is no longer ignored on steps that also have `Micro-move`.** The gate length is now carried along with the step until the delayed note actually starts. Patterns that combine both on one step will now play their gate; before, the note kept ringing.

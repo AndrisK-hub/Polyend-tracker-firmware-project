@@ -1889,6 +1889,45 @@ void Sequencer::setSelectionInstrument(int16_t value)
     }
 }
 
+#ifdef TRACKER_MINI
+int16_t Sequencer::replaceTrackInstrument(uint8_t track, uint8_t instrument)
+{
+    if (track >= kAllTracks || instrument >= kTotalInstrumentsCount)
+        return -1;
+
+    // sample instruments belong on sample tracks only; this also catches anything the
+    // instrument order of the track type does not contain
+    const bool midiTrack = !isSampleTrack(track);
+    if (changeInstrumentInSpecificOrder(instrument, 0, midiTrack) != instrument)
+        return -1;
+
+    strPattern::strTrack* tr = &currentPattern->track[track];
+    const uint16_t lastStep = tr->length < MAXSTEP ? tr->length : MAXSTEP; // length counts from 0
+
+    int16_t changed = 0;
+    for (uint16_t s = 0; s <= lastStep; s++)
+    {
+        if (tr->step[s].note >= 0 && tr->step[s].instrument != instrument)
+            changed++;
+    }
+
+    if (changed == 0)
+        return 0; // nothing to do, so no undo step either
+
+    newFileManager.storePatternUndoRevision();
+
+    for (uint16_t s = 0; s <= lastStep; s++)
+    {
+        if (tr->step[s].note >= 0)
+            tr->step[s].instrument = instrument;
+    }
+
+    newFileManager.setActualPatternStructChanged();
+
+    return changed;
+}
+#endif
+
 void Sequencer::setSelectionNote(int16_t value)
 {
     value = isOutOfRange<int>(value, (int)STEP_NOTE_MIN, (int)STEP_NOTE_MAX)

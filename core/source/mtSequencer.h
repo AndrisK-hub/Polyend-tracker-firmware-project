@@ -906,6 +906,11 @@ class Sequencer
     void changeSelectionVolume(int16_t value);
     void setSelectionVolumeByPad(int16_t pad);
     void setSelectionInstrument(int16_t value);
+#ifdef TRACKER_MINI
+    // Shift + Inst + track button: every note of one track gets the same instrument. Returns the
+    // number of notes changed, or -1 when the instrument cannot be used on that track.
+    int16_t replaceTrackInstrument(uint8_t track, uint8_t instrument);
+#endif
     void setSelectionNote(int16_t value);
 
     // Call right after a note was entered at the cursor with a key, and when that key is released.

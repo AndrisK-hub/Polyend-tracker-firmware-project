@@ -126,6 +126,9 @@ static void functMenu(uint8_t state);
 // muty
 static void functMuteTrack(uint8_t button, uint8_t state);
 static void functRecArmTrack(uint8_t button, uint8_t state);
+#ifdef TRACKER_MINI
+static void replaceTrackInstrument(int trackIdx);
+#endif
 
 //--------------------------------------------
 static uint8_t getSelectedElement();
@@ -1421,6 +1424,42 @@ void cPatternEditor::setActualPatternEditStep(int16_t value)
 }
 
 //======================================================================================================================
+#ifdef TRACKER_MINI
+// Shift + Inst + track button: every note of that track gets the selected instrument
+// (the one last picked with Inst, shown in the instrument list).
+static void replaceTrackInstrument(int trackIdx)
+{
+    static char line1[40];
+    static char line2[40];
+
+    if (PTE->editMode != 1)
+    {
+        mtPopups.show(0, "Switch on edit mode", "to change instruments.");
+        return;
+    }
+
+    int16_t changed =
+      sequencer.replaceTrackInstrument(trackIdx, mtProject.values.lastUsedInstrument);
+
+    if (changed < 0)
+    {
+        mtPopups.show(0, "This instrument can't be", "used on this track.");
+    }
+    else if (changed == 0)
+    {
+        mtPopups.show(0, "All notes of this track", "already use it.");
+    }
+    else
+    {
+        snprintf(line1, sizeof(line1), "Instrument set on track %d:", (trackIdx % 8) + 1);
+        snprintf(line2, sizeof(line2), "%d notes changed.", (int)changed);
+        mtPopups.show(0, line1, line2);
+
+        PTE->refreshPattern();
+    }
+}
+#endif
+
 static void functMuteTrack(uint8_t button, uint8_t state)
 {
     if (state == buttonPress)
@@ -1432,6 +1471,15 @@ static void functMuteTrack(uint8_t button, uint8_t state)
         {
             return;
         }
+
+#ifdef TRACKER_MINI
+        // with Inst held the track buttons replace the instrument instead of muting
+        if (PTE->buttons->isButtonPressed(interfaceButtonInstr))
+        {
+            replaceTrackInstrument(trackIdx);
+            return;
+        }
+#endif
 
         auto& mute =
           midiTrack ? mtProject.values.midiTrackMute[button] : mtProject.values.trackMute[button];
@@ -2158,6 +2206,16 @@ static void functShift(uint8_t state)
               1; // dezaktywuje wstawianie danych na wyjecie z popupow
             PTE->cancelPopups();
             PTE->insertOnPopupHideDisabled = 0; // a tu aktywuje spowrotem
+
+#ifdef TRACKER_MINI
+            // Inst held first (to pick the instrument), then Shift: the track buttons are
+            // needed for Shift + Inst + track, so hand them over as the plain Shift does
+            if (PTE->buttons->isButtonPressed(interfaceButtonInstr) && PTE->selectedPlace < 0)
+            {
+                PTE->showMuteButtons(1, !isSampleTrack(PTE->trackerPattern.actualTrack));
+                PTE->setMuteFunct(1);
+            }
+#endif
         }
         else if (mtPopups.isNoteKeyboardPopupActive())
         {
