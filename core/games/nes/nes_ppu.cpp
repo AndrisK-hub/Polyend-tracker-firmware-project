@@ -322,6 +322,7 @@ void Ppu::evalSprites(int line)
 {
     memset(spr, 0, sizeof(spr));
     a12Mode = 0;
+    spr0OnLine = false;
     if (!rendering())
         return;
 
@@ -335,7 +336,10 @@ void Ppu::evalSprites(int line)
         if (row >= 0 && row < h)
         {
             if (count < 8)
+            {
+                spr0OnLine = spr0OnLine || n == 0;
                 sel[count++] = static_cast<uint8_t>(n);
+            }
             else
             {
                 status |= 0x20;
@@ -390,8 +394,18 @@ void Ppu::evalSprites(int line)
 // ---- pixel output ---------------------------------------------------------------------------------
 void Ppu::renderGroup(int g)
 {
-    uint8_t* out = fb ? fb + scanline * 256 + g * 8 : scratchRow;
     uint8_t m = mask;
+    // Picture not wanted: only the sprite-0 hit has to be found, and only where sprite 0 can hit.
+    if (skipPixels && (!spr0OnLine || (status & 0x40) || hitAt >= 0 || (m & 0x18) != 0x18))
+    {
+        if (m & 0x18)
+        {
+            q[0] = q[1];
+            q[1] = fetchTile();
+        }
+        return;
+    }
+    uint8_t* out = fb ? fb + scanline * 256 + g * 8 : scratchRow;
     uint8_t gmask = (m & 1) ? 0x30 : 0x3F;
     if (!(m & 0x18))
     {

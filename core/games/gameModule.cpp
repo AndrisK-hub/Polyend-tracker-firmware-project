@@ -55,10 +55,15 @@ constexpr uint32_t kAudioSampleRate = 44118; // the audio engine's rate (44117.6
 constexpr uint32_t kFrameMicros = 16639;    // NTSC: 60.0988 frames per second
 constexpr uint32_t kFrameMicrosPal = 19997; // PAL: 50.007 frames per second
 
-// While sound is playing, the audio clock sets the pace: the next picture is made when the sound
-// buffer has run down to this many samples (about 25 ms), which leaves room for one frame of
-// emulation without the sound running dry.
-constexpr uint32_t kAudioTargetFill = 1100;
+// While sound is playing, the audio clock sets the pace: the next frame is made when the sound
+// buffer has run down to this many samples (about 46 ms). That leaves room for a frame of emulation
+// plus the rest of the main loop without the sound running dry.
+constexpr uint32_t kAudioTargetFill = 2048;
+// Below this (about 23 ms of sound) the emulation is falling behind: the next frame is run without
+// drawing its picture, which takes about 60 % of the time, and if the buffer is still that low
+// afterwards a second frame follows straight away.
+constexpr uint32_t kAudioLowFill = 1024;
+constexpr uint8_t kMaxSkippedPictures = 3; // in a row, so the picture still moves
 // Without a request for sound for this long (microseconds) the timer takes over again.
 constexpr int32_t kAudioStallUs = 100000;
 
@@ -123,16 +128,16 @@ uint8_t readPad()
 }
 
 // A tiny 3x5 font for the numbers of the sound test: 0-9 and A-F, then the letters M W T P J S that
-// label the numbers; five rows of three bits each.
-constexpr uint16_t kGlyphs[22] = { 0x7B6F, 0x2C97, 0x73E7, 0x73CF, 0x5BC9, 0x79CF, 0x79EF, 0x7252,
+// label the numbers (and L K); five rows of three bits each.
+constexpr uint16_t kGlyphs[24] = { 0x7B6F, 0x2C97, 0x73E7, 0x73CF, 0x5BC9, 0x79CF, 0x79EF, 0x7252,
                                    0x7BEF, 0x7BCF, 0x7BED, 0x6BAE, 0x7927, 0x6B6E, 0x79E7, 0x79E4,
-                                   0x5FED, 0x5BFD, 0x7492, 0x7BE4, 0x126A, 0x388E };
+                                   0x5FED, 0x5BFD, 0x7492, 0x7BE4, 0x126A, 0x388E, 0x4927, 0x5BAD };
 constexpr uint8_t kInfoBackground = 0x00; // black and white in the picture's colour format
 constexpr uint8_t kInfoForeground = 0xFF;
 constexpr int kInfoScale = 2;
 constexpr int kInfoAdvance = 4 * kInfoScale;
 constexpr int kInfoRowHeight = 6 * kInfoScale;
-constexpr int kInfoRows = 4;
+constexpr int kInfoRows = 5;
 constexpr uint16_t kInfoFrames = 900; // about fifteen seconds
 constexpr uint32_t kBeepSamples = 11025; // a quarter of a second
 constexpr int16_t kBeepLevel = 8000;
@@ -140,7 +145,7 @@ constexpr uint32_t kBeepHalfPeriod = 25; // about 880 Hz
 
 void drawGlyph(uint8_t* frame, int x, int y, uint8_t index)
 {
-    const uint16_t bits = kGlyphs[index < 22 ? index : 0];
+    const uint16_t bits = kGlyphs[index < 24 ? index : 0];
     for (int row = 0; row < 5; row++)
     {
         for (int col = 0; col < 3; col++)
@@ -158,10 +163,10 @@ void drawGlyph(uint8_t* frame, int x, int y, uint8_t index)
     }
 }
 
-// Draws capital hex digits (0-9, A-F) and the labels M W T P J S; every other character is a gap.
+// Draws capital hex digits (0-9, A-F) and the labels M W T P J S L K; every other character is a gap.
 void drawInfoText(uint8_t* frame, int x, int y, const char* text)
 {
-    static const char kLabels[] = "MWTPJS"; // glyphs 16..21
+    static const char kLabels[] = "MWTPJSLK"; // glyphs 16..23
     for (; *text != 0; text++, x += kInfoAdvance)
     {
         const char c = *text;
@@ -403,6 +408,10 @@ void cGameModule::start(uint32_t options)
     maxPeak = 0;
     sentPeakHold = 0;
     selfTestPeak = 0;
+    skippedInRow = 0;
+    skipHistory = 0;
+    lastUpdateUs = 0;
+    maxGapUs = 0;
 
     songTimer.hide();
     mtPadBoard.releaseAllInstruments();
@@ -554,6 +563,7 @@ void cGameModule::soundTest()
     soundInfoFrames = kInfoFrames;
     nesAudio().takeSentPeak(); // T starts from this tap
     sentPeakHold = 0;
+    maxGapUs = 0;
 }
 
 // Numbers about the sound in the top left corner of the picture, all in hexadecimal:
@@ -569,6 +579,9 @@ void cGameModule::soundTest()
 //   P  where the game's processor is now
 //   J  1 = the processor has stopped (the game crashed)
 //   S  loudest sample of the built-in test note (about 14CB when the sound chip works on this device)
+//   L  longest time between two turns of the main loop since the Menu tap, in ms (the game can only
+//      keep up while this stays below about 40)
+//   K  pictures left out of the last 32 frames to keep the sound going (0 = the device keeps up)
 void cGameModule::drawSoundInfo()
 {
     char line[40];
@@ -597,6 +610,10 @@ void cGameModule::drawSoundInfo()
     snprintf(line, sizeof(line), "P%04X J%X S%04X", static_cast<unsigned>(console->pc),
              console->jammed ? 1u : 0u, static_cast<unsigned>(selfTestPeak & 0xFFFF));
     drawInfoText(frame, 2, 1 + 3 * kInfoRowHeight, line);
+
+    snprintf(line, sizeof(line), "L%02X K%02X", static_cast<unsigned>((maxGapUs / 1000) & 0xFF),
+             static_cast<unsigned>(__builtin_popcount(skipHistory)));
+    drawInfoText(frame, 2, 1 + 4 * kInfoRowHeight, line);
 }
 
 void cGameModule::update()
@@ -609,6 +626,11 @@ void cGameModule::update()
     presentFrame();
 
     const uint32_t now = platform->getTimer()->micros();
+    if (lastUpdateUs != 0 && now - lastUpdateUs > maxGapUs)
+    {
+        maxGapUs = now - lastUpdateUs;
+    }
+    lastUpdateUs = now;
 
     // The sound card takes samples at a fixed rate, so keeping a steady amount of sound waiting
     // paces the game exactly and keeps picture and sound together. If the audio engine has not asked
@@ -646,19 +668,47 @@ void cGameModule::update()
         nextFrameUs += frameMicros;
     }
 
+    // at most two frames per turn, so the buttons and the screen are still looked after
+    for (int run = 0; run < 2; run++)
+    {
+        const uint32_t fill = nesAudio().fill();
+        const bool behind = audioClock && fill < kAudioLowFill;
+        runOneFrame(behind && skippedInRow < kMaxSkippedPictures);
+        if (!(audioClock && nesAudio().fill() < kAudioLowFill))
+        {
+            break; // caught up (or paced by the timer)
+        }
+    }
+
+    presentFrame();
+}
+
+void cGameModule::runOneFrame(bool skipPicture)
+{
     console->setPad(0, readPad());
+    console->ppu.skipPixels = skipPicture;
     const uint32_t runStartUs = platform->getTimer()->micros();
     console->runFrame();
     lastFrameUs = platform->getTimer()->micros() - runStartUs;
-    frameReady = true;
+    skipHistory = (skipHistory << 1) | (skipPicture ? 1u : 0u);
+    if (skipPicture)
+    {
+        skippedInRow++;
+    }
+    else
+    {
+        skippedInRow = 0;
+        frameReady = true;
+    }
     collectSound();
     if (soundInfoFrames > 0)
     {
         soundInfoFrames--;
-        drawSoundInfo();
+        if (!skipPicture)
+        {
+            drawSoundInfo();
+        }
     }
-
-    presentFrame();
 }
 
 #endif // TRACKER_MINI

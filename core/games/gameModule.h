@@ -43,6 +43,7 @@ class cGameModule : public ModuleBase
     void presentFrame();
     void collectSound();
     void drawSoundInfo();
+    void runOneFrame(bool skipPicture);
 
     State state = kStateIdle;
     nes::Console* console = nullptr;
@@ -63,6 +64,10 @@ class cGameModule : public ModuleBase
     uint32_t maxPeak = 0;           // loudest sound the chip has made since the start
     uint32_t sentPeakHold = 0;      // loudest sample sent to the mixer since the last Menu tap
     uint32_t selfTestPeak = 0;      // result of the built-in test note
+    uint8_t skippedInRow = 0;       // pictures left out one after the other
+    uint32_t skipHistory = 0;       // one bit per frame, 1 = its picture was left out
+    uint32_t lastUpdateUs = 0;      // when update() last ran
+    uint32_t maxGapUs = 0;          // longest time between two update() calls since the Menu tap
 
     hControl titleText = -1;
     hControl detailText = -1;

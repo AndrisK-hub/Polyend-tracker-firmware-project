@@ -311,6 +311,11 @@ class Ppu
     uint8_t* fb = nullptr; // 256x240, one byte per pixel (RGB332)
     uint8_t lut[64];       // NES colour index -> RGB332
     bool frameDone = false;
+    // When true the picture is not drawn (fb keeps the last picture); everything the game can
+    // observe (sprite-0 hit, sprite overflow, the tile fetches mappers watch) still happens exactly.
+    // Used to drop pictures when the emulation falls behind, so the sound keeps up.
+    bool skipPixels = false;
+    bool spr0OnLine = false; // sprite 0 is among the sprites of the current line
 
     // registers and memory
     uint8_t ctrl = 0, mask = 0, status = 0, oamAddr = 0;
