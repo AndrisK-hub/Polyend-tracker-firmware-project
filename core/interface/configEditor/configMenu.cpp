@@ -18,7 +18,7 @@
 // clang-format off
 
 #ifdef TRACKER_MINI
-constexpr uint8_t baseMenuGroupCount = 9;
+constexpr uint8_t baseMenuGroupCount = 10; // Games and Trade monitor first
 constexpr uint8_t projectMenuGroupCount = 10;
 constexpr uint8_t generalMenuGroupCount = 10;
 #elif defined(PLATFORM_IMX)
@@ -44,6 +44,8 @@ cMenuGroup menuBase(menuBase, 0, baseMenuGroupCount);
 #ifdef TRACKER_MINI
 // first square of the Config screen, so the games are one press away
 cMenuGroup menuGames(menuBase, "Games", 1);
+// right after the games: shows what a program on the computer sends over USB
+cMenuGroup menuTradeMonitor(menuBase, "Trade monitor", 1);
 #endif
 
 cMenuGroup menuProject(menuBase, "Project Settings", projectMenuGroupCount);
@@ -73,6 +75,14 @@ cMenuItem melPlayGame(menuGames,
                       gamesPlayDesc,
                       menuTypeItemActionButton,
                       &playGameSetup);
+
+// trade monitor
+const strItemTypeActionButton openTradeMonitorSetup{ tradeMonitorActivate, nullptr };
+cMenuItem melOpenTradeMonitor(menuTradeMonitor,
+                              "Open monitor",
+                              tradeMonitorDesc,
+                              menuTypeItemActionButton,
+                              &openTradeMonitorSetup);
 #endif
 
 // project settings

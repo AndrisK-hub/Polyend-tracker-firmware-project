@@ -60,6 +60,10 @@ void midiInit(UartMidi* uartMidi, UsbMidi* usbMidi)
     usbMidi->setReceiveActions(&usbMidiReceiveActions);
 }
 
+#ifdef TRACKER_MINI
+#include "tradeMonitor/tradeMonitor.h"
+#endif
+
 void midiUpdate()
 {
     if (sequencer.isRenderMode())
@@ -79,6 +83,9 @@ void midiUpdate()
         {
             usbMidi->read();
         }
+#ifdef TRACKER_MINI
+        tradeMonitorReceive(usbMidi);
+#endif
     }
 }
 

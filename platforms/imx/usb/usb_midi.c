@@ -16,6 +16,7 @@
 #include "composite.h"
 
 #include "usb_midi.h"
+#include "cr_section_macros.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,6 +45,37 @@ volatile int queueBottom = 0;
 volatile MidiUsbMessage midiMessageQueue[QUEUE_SIZE];
 
 volatile static usb_device_composite_struct_t* g_deviceComposite;
+
+// SysEx bytes (F0 ... F7) received from the computer, for whoever reads them with
+// midiUsbReadSysex(). Written only by the USB interrupt, read only by the main loop.
+// The bytes live in external RAM: the fast internal RAM is nearly full.
+#define SYSEX_FIFO_SIZE 8192 // a power of two
+__NOINIT(EXTERNAL_RAM) static volatile uint8_t sysexFifo[SYSEX_FIFO_SIZE];
+static volatile uint32_t sysexHead = 0; // next byte to write (interrupt)
+static volatile uint32_t sysexTail = 0; // next byte to read (main loop)
+// After an overflow, bytes are thrown away until the next F0, so no message reaches the reader
+// with a hole in it (the reader drops the unfinished one when it sees that F0).
+static volatile bool sysexDropping = false;
+
+static void sysexPush(uint8_t b)
+{
+    if (sysexDropping)
+    {
+        if (b != 0xF0)
+        {
+            return;
+        }
+        sysexDropping = false;
+    }
+    const uint32_t next = (sysexHead + 1) & (SYSEX_FIFO_SIZE - 1);
+    if (next == sysexTail)
+    {
+        sysexDropping = true;
+        return;
+    }
+    sysexFifo[sysexHead] = b;
+    sysexHead = next;
+}
 
 //#define DEBUG_PRINT_MIDI_OUT_STATUS
 #ifdef DEBUG_PRINT_MIDI_OUT_STATUS
@@ -115,6 +147,20 @@ usb_status_t USB_DeviceMidiCallback(class_handle_t handle, uint32_t event, void*
                 command = (frame >> 8) & 0xFF;
                 channel = (command & 15) + 1;
                 // cable = (n >> 4) & 15; // not used for now
+
+                // SysEx: code index 4 = start or middle (3 bytes), 5 = end with one byte (F7),
+                // 6 = end with two bytes, 7 = end with three bytes
+                if (type1 == 0x04 || type1 == 0x06 || type1 == 0x07 ||
+                    (type1 == 0x05 && command == 0xF7))
+                {
+                    const uint32_t count = type1 == 0x05 ? 1 : (type1 == 0x06 ? 2 : 3);
+                    for (uint32_t i = 0; i < count; i++)
+                    {
+                        sysexPush((uint8_t)(frame >> (8 * (i + 1))));
+                    }
+                    index += 4;
+                    continue;
+                }
 
                 if (type1 >= 0x08 && type1 <= 0x0E)
                 {
@@ -289,6 +335,20 @@ void midiUsbSend(MidiUsbMessage* midiMessage)
         midiUsbTx((midiMessage->type << 8) | 0x03 | ((midiMessage->data1 & 0x7F) << 16) |
                   ((midiMessage->data2 & 0x7F) << 24));
     }
+}
+
+uint32_t midiUsbReadSysex(uint8_t* dst, uint32_t maxBytes)
+{
+    uint32_t n = 0;
+    uint32_t tail = sysexTail;
+    const uint32_t head = sysexHead;
+    while (n < maxBytes && tail != head)
+    {
+        dst[n++] = sysexFifo[tail];
+        tail = (tail + 1) & (SYSEX_FIFO_SIZE - 1);
+    }
+    sysexTail = tail;
+    return n;
 }
 
 bool midiUsbReceive(MidiUsbMessage* midiMessage)

@@ -255,6 +255,7 @@ extern cConfigEditor configEditor;
 void firmwareUpgradeActivate();
 #ifdef TRACKER_MINI
 void gamesPlayActivate();
+void tradeMonitorActivate();
 #endif
 void firmwareUpgradeDeactivate();
 

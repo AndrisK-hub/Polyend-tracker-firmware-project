@@ -130,6 +130,15 @@ class UsbMidi : public Midi
     };
 
     virtual void setReceiveActions(MidiReceiveActions* receiveActions) = 0;
+
+    // Received SysEx bytes (F0 ... F7) not yet read; returns how many were copied.
+    // Platforms that don't collect SysEx return 0.
+    virtual uint32_t readSysexBytes(uint8_t* dst, uint32_t maxBytes)
+    {
+        (void)dst;
+        (void)maxBytes;
+        return 0;
+    }
 };
 
 class UartMidi : public Midi

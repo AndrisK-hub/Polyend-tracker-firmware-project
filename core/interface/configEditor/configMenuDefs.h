@@ -387,6 +387,20 @@ const char firmUpdDesc[] = {
 };
 
 #ifdef TRACKER_MINI
+const char tradeMonitorDesc[] = {
+    "Shows the values a\n"
+    "program on your\n"
+    "computer sends over\n"
+    "the USB cable\n"
+    "(tracker_monitor.py).\n\n"
+
+    "The data keeps\n"
+    "arriving while other\n"
+    "screens are open.\n\n"
+
+    "Menu - back"
+};
+
 const char gamesPlayDesc[] = {
     "Plays NES games\n"
     "(.nes files) from\n"

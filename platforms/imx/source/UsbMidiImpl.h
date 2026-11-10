@@ -17,6 +17,10 @@ class UsbMidiImpl : public UsbMidi
     virtual void sendNoteOn(uint8_t note, uint8_t velocity, uint8_t channel) override;
     virtual void sendNoteOff(uint8_t note, uint8_t velocity, uint8_t channel) override;
     virtual void setReceiveActions(MidiReceiveActions* receiveActions) override;
+    virtual uint32_t readSysexBytes(uint8_t* dst, uint32_t maxBytes) override
+    {
+        return midiUsbReadSysex(dst, maxBytes);
+    }
 
   private:
     void send(uint8_t type, uint8_t channel, uint8_t data1, uint8_t data2)

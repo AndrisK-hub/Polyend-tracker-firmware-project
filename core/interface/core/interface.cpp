@@ -23,6 +23,7 @@
 
 #ifdef TRACKER_MINI
 #include "gameModule.h"
+#include "tradeMonitor/tradeMonitor.h"
 #endif
 
 #include "fileManager.h"
@@ -654,6 +655,15 @@ void interfaceEnvents(uint8_t event, void* param1, void* param2, void* param3)
             // param1 = handle to the module that starts the game
             mtInterface.deactivateModule((hModule)param1);
             mtInterface.activateModule(&gameModule, 0);
+#endif
+            break;
+        }
+        case eventActivateTradeMonitor:
+        {
+#ifdef TRACKER_MINI
+            // param1 = handle to the module that opens it
+            mtInterface.deactivateModule((hModule)param1);
+            mtInterface.activateModule(&tradeMonitor, 0);
 #endif
             break;
         }

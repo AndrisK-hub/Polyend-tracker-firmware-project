@@ -270,6 +270,7 @@ enum interfaceEvents
 
     eventActivateImageViewer,
     eventActivateGameModule,
+    eventActivateTradeMonitor,
 
     eventSetFileTransferMode,
 

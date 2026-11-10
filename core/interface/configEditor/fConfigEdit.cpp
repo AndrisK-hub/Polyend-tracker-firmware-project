@@ -21,6 +21,7 @@
 
 #ifdef TRACKER_MINI
 #include "gameModule.h"
+#include "tradeMonitor/tradeMonitor.h"
 #endif
 
 cConfigEditor configEditor;
@@ -80,6 +81,15 @@ static void functMiniMiddle();
 //##########################################################################################
 void cConfigEditor::update()
 {
+#ifdef TRACKER_MINI
+    // Config > Trade monitor > Open was pressed during the last turn
+    if (tradeMonitorTakeOpenRequest())
+    {
+        eventFunct(eventActivateTradeMonitor, this, nullptr, nullptr);
+        return;
+    }
+#endif
+
     uint8_t managerStatus = newFileManager.getStatus();
 
     if (managerStatus == fmBrowseFirmwaresEnd)
@@ -917,6 +927,11 @@ void firmwareUpgradeActivate()
 }
 
 #ifdef TRACKER_MINI
+void tradeMonitorActivate()
+{
+    tradeMonitorOpenRequest(); // the switch happens in update(), outside the menu's own handling
+}
+
 void gamesPlayActivate()
 {
     CE->itemEditorOpen(menuTypeItemActionButton, "Play game", gamesPlayDesc, nullptr);

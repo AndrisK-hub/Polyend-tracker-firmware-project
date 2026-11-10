@@ -40,6 +40,8 @@ extern "C"
     bool midiUsbAvailable();
     void midiUsbSend(MidiUsbMessage* midiMessage);
     bool midiUsbReceive(MidiUsbMessage* midiMessage);
+    // copies up to maxBytes received SysEx bytes (F0 ... F7) into dst; returns how many
+    uint32_t midiUsbReadSysex(uint8_t* dst, uint32_t maxBytes);
 
 #ifdef __cplusplus
 }
