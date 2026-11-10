@@ -1,0 +1,4 @@
+Tracker Mini firmware copied from build run 42874326446 of AndrisK-hub/Polyend-tracker-firmware-project
+Built from commit: aa465284cec72c672d6156583e2ee309319d41b3
+
+f30103c7684c051714fcffb9603798ad059159fabb0b9b39177b1d2bff4853ce  TrackerMini_CE_aa46528.ptf
